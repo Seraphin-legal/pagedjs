@@ -9,6 +9,7 @@ import PageCounterIncrement from "./page-counter-increment.js";
 import NthOfType from "./nth-of-type.js";
 import Following from "./following.js";
 import Footnotes from "./footnotes.js";
+import Tables from "./tables.js";
 
 export default [
 	PrintMedia,
@@ -21,5 +22,6 @@ export default [
 	PageCounterIncrement,
 	NthOfType,
 	Following,
-	Footnotes
+	Footnotes,
+	Tables,
 ];

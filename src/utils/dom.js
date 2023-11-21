@@ -10,7 +10,6 @@ export function* walk(start, limiter) {
 	let node = start;
 
 	while (node) {
-
 		yield node;
 
 		if (node.childNodes.length) {
@@ -32,7 +31,6 @@ export function* walk(start, limiter) {
 					node = node.nextSibling;
 					break;
 				}
-
 			}
 		}
 	}
@@ -177,7 +175,7 @@ export function rebuildAncestors(node) {
 
 	// Gather all ancestors
 	let element = node;
-	while(element.parentNode && element.parentNode.nodeType === 1) {
+	while (element.parentNode && element.parentNode.nodeType === 1) {
 		ancestors.unshift(element.parentNode);
 		element = element.parentNode;
 	}
@@ -185,7 +183,7 @@ export function rebuildAncestors(node) {
 	for (var i = 0; i < ancestors.length; i++) {
 		ancestor = ancestors[i];
 		parent = ancestor.cloneNode(false);
-	
+
 		parent.setAttribute("data-split-from", parent.getAttribute("data-ref"));
 		// ancestor.setAttribute("data-split-to", parent.getAttribute("data-ref"));
 
@@ -205,7 +203,7 @@ export function rebuildAncestors(node) {
 		}
 
 		if (added.length) {
-			let container = added[added.length-1];
+			let container = added[added.length - 1];
 			container.appendChild(parent);
 		} else {
 			fragment.appendChild(parent);
@@ -216,12 +214,116 @@ export function rebuildAncestors(node) {
 		if (parent.nodeName === "TD" && ancestor.parentElement.contains(ancestor)) {
 			let td = ancestor;
 			let prev = parent;
+			const ancestorTBody = parentOf(ancestor, "TBODY");
+			const ancestorTable = parentOf(ancestorTBody, "TABLE");
+			const ancestorColGroup = ancestorTable.querySelector("COLGROUP");
+			if (ancestorColGroup) {
+				// add or replace colgroup
+				const currentTable = parentOf(parent, "TABLE");
+				const currentColGroup = currentTable.querySelector("COLGROUP");
+				currentColGroup?.remove();
+				const newColGroup = ancestorColGroup.cloneNode(true);
+				currentTable.insertBefore(newColGroup, currentTable.firstElementChild);
+			}
+
+			const currentY = Math.max(
+				...[...parent.parentNode.children].map((td) =>
+					parseInt(td.dataset.yStart)
+				)
+			);
+			const hasRowSpan = [...ancestorTBody.querySelectorAll("[rowspan]")].some(
+				(td) => td.rowSpan > 1
+			);
+			const dataCellsSize = hasRowSpan
+				? [...ancestor.parentNode.parentNode.children]
+					.map((tr) =>
+						[...tr.children].map((td) => ({
+							node: td,
+							xStart: parseInt(td.dataset.xStart),
+							xEnd: parseInt(td.dataset.xEnd),
+							yStart: parseInt(td.dataset.yStart),
+							yEnd: parseInt(td.dataset.yEnd),
+						}))
+					)
+					.flat(1)
+				: [];
 			while ((td = td.previousElementSibling)) {
 				let sib = td.cloneNode(false);
 				parent.parentElement.insertBefore(sib, prev);
 				prev = sib;
 			}
-			
+
+			const xMax = Math.max(...dataCellsSize.map((d) => d.xEnd));
+			const xSum = Array.from(
+				{ length: xMax + 1 },
+				(_, index) => 1 + index
+			).reduce((partialSum, a) => partialSum + a, 0);
+			const currentRowData = hasRowSpan
+				? [...parent.parentNode.children].map((td) => ({
+					xStart: parseInt(td.dataset.xStart),
+					xEnd: parseInt(td.dataset.xEnd),
+				}))
+				: [];
+			const rowXSum = currentRowData
+				.map((c) =>
+					Array.from(
+						{ length: c.xEnd - c.xStart + 1 },
+						(_, index) => c.xStart + index + 1
+					)
+				)
+				.flat(1)
+				.reduce((partialSum, a) => partialSum + a, 0);
+			const needFillMissingCells = hasRowSpan && rowXSum !== xSum;
+			if (needFillMissingCells) {
+				// create missing columns with [rowspan]
+				let currentCol = parent.parentNode.firstElementChild;
+
+				for (let idx = 0; idx <= xMax; ++idx) {
+					const currentColXStart = parseInt(currentCol.dataset.xStart, 10);
+					let append = false;
+
+					if (
+						currentColXStart <= idx &&
+						idx <= parseInt(currentCol.dataset.xEnd, 10)
+					)
+						continue;
+					if (idx > currentColXStart) {
+						if (currentCol.nextElementSibling) {
+							currentCol = currentCol.nextElementSibling;
+							if (
+								parseInt(currentCol.dataset.xStart, 10) <= idx &&
+								idx <= parseInt(currentCol.dataset.xEnd, 10)
+							)
+								continue;
+						} else {
+							append = true;
+						}
+					}
+
+					const cell = dataCellsSize.find(
+						(c) =>
+							c.xStart <= idx &&
+							idx <= c.xEnd &&
+							c.yStart <= currentY &&
+							currentY <= c.yEnd
+					);
+					if (!cell) {
+						console.warn("Cell not found ????", idx, currentY, dataCellsSize);
+						continue;
+					}
+					// insert cell
+					const newCell = cell.node.cloneNode(false);
+					newCell.innerHTML = ""; // empty the cell
+					const newCellYEnd = parseInt(newCell.dataset.yEnd, 10);
+					newCell.setAttribute("rowspan", newCellYEnd - currentY + 1);
+					if (!append) {
+						currentCol.parentNode.insertBefore(newCell, currentCol);
+					} else {
+						currentCol.parentNode.appendChild(newCell);
+						currentCol = newCell;
+					}
+				}
+			}
 		}
 	}
 
@@ -278,16 +380,17 @@ export function split(bound, cutElement, breakAfter) {
 */
 
 export function needsBreakBefore(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
-			typeof node.dataset.breakBefore !== "undefined" &&
-			(node.dataset.breakBefore === "always" ||
-			 node.dataset.breakBefore === "page" ||
-			 node.dataset.breakBefore === "left" ||
-			 node.dataset.breakBefore === "right" ||
-			 node.dataset.breakBefore === "recto" ||
-			 node.dataset.breakBefore === "verso")
-		 ) {
+	if (
+		typeof node !== "undefined" &&
+		typeof node.dataset !== "undefined" &&
+		typeof node.dataset.breakBefore !== "undefined" &&
+		(node.dataset.breakBefore === "always" ||
+			node.dataset.breakBefore === "page" ||
+			node.dataset.breakBefore === "left" ||
+			node.dataset.breakBefore === "right" ||
+			node.dataset.breakBefore === "recto" ||
+			node.dataset.breakBefore === "verso")
+	) {
 		return true;
 	}
 
@@ -295,16 +398,17 @@ export function needsBreakBefore(node) {
 }
 
 export function needsBreakAfter(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
-			typeof node.dataset.breakAfter !== "undefined" &&
-			(node.dataset.breakAfter === "always" ||
-			 node.dataset.breakAfter === "page" ||
-			 node.dataset.breakAfter === "left" ||
-			 node.dataset.breakAfter === "right" ||
-			 node.dataset.breakAfter === "recto" ||
-			 node.dataset.breakAfter === "verso")
-		 ) {
+	if (
+		typeof node !== "undefined" &&
+		typeof node.dataset !== "undefined" &&
+		typeof node.dataset.breakAfter !== "undefined" &&
+		(node.dataset.breakAfter === "always" ||
+			node.dataset.breakAfter === "page" ||
+			node.dataset.breakAfter === "left" ||
+			node.dataset.breakAfter === "right" ||
+			node.dataset.breakAfter === "recto" ||
+			node.dataset.breakAfter === "verso")
+	) {
 		return true;
 	}
 
@@ -312,16 +416,17 @@ export function needsBreakAfter(node) {
 }
 
 export function needsPreviousBreakAfter(node) {
-	if( typeof node !== "undefined" &&
-			typeof node.dataset !== "undefined" &&
-			typeof node.dataset.previousBreakAfter !== "undefined" &&
-			(node.dataset.previousBreakAfter === "always" ||
-			 node.dataset.previousBreakAfter === "page" ||
-			 node.dataset.previousBreakAfter === "left" ||
-			 node.dataset.previousBreakAfter === "right" ||
-			 node.dataset.previousBreakAfter === "recto" ||
-			 node.dataset.previousBreakAfter === "verso")
-		 ) {
+	if (
+		typeof node !== "undefined" &&
+		typeof node.dataset !== "undefined" &&
+		typeof node.dataset.previousBreakAfter !== "undefined" &&
+		(node.dataset.previousBreakAfter === "always" ||
+			node.dataset.previousBreakAfter === "page" ||
+			node.dataset.previousBreakAfter === "left" ||
+			node.dataset.previousBreakAfter === "right" ||
+			node.dataset.previousBreakAfter === "recto" ||
+			node.dataset.previousBreakAfter === "verso")
+	) {
 		return true;
 	}
 
@@ -329,13 +434,19 @@ export function needsPreviousBreakAfter(node) {
 }
 
 export function needsPageBreak(node, previousSignificantNode) {
-	if (typeof node === "undefined" || !previousSignificantNode || isIgnorable(node)) {
+	if (
+		typeof node === "undefined" ||
+		!previousSignificantNode ||
+		isIgnorable(node)
+	) {
 		return false;
 	}
 	if (node.dataset && node.dataset.undisplayed) {
 		return false;
 	}
-	let previousSignificantNodePage = previousSignificantNode.dataset ? previousSignificantNode.dataset.page : undefined;
+	let previousSignificantNodePage = previousSignificantNode.dataset
+		? previousSignificantNode.dataset.page
+		: undefined;
 	if (typeof previousSignificantNodePage === "undefined") {
 		const nodeWithNamedPage = getNodeWithNamedPage(previousSignificantNode);
 		if (nodeWithNamedPage) {
@@ -344,7 +455,10 @@ export function needsPageBreak(node, previousSignificantNode) {
 	}
 	let currentNodePage = node.dataset ? node.dataset.page : undefined;
 	if (typeof currentNodePage === "undefined") {
-		const nodeWithNamedPage = getNodeWithNamedPage(node, previousSignificantNode);
+		const nodeWithNamedPage = getNodeWithNamedPage(
+			node,
+			previousSignificantNode
+		);
 		if (nodeWithNamedPage) {
 			currentNodePage = nodeWithNamedPage.dataset.page;
 		}
@@ -352,14 +466,15 @@ export function needsPageBreak(node, previousSignificantNode) {
 	return currentNodePage !== previousSignificantNodePage;
 }
 
-export function *words(node) {
+export function* words(node) {
 	let currentText = node.nodeValue;
 	let max = currentText.length;
 	let currentOffset = 0;
 	let currentLetter;
 
 	let range;
-	const significantWhitespaces = node.parentElement && node.parentElement.nodeName === "PRE";
+	const significantWhitespaces =
+		node.parentElement && node.parentElement.nodeName === "PRE";
 
 	while (currentOffset < max) {
 		currentLetter = currentText[currentOffset];
@@ -385,7 +500,7 @@ export function *words(node) {
 	}
 }
 
-export function *letters(wordRange) {
+export function* letters(wordRange) {
 	let currentText = wordRange.startContainer;
 	let max = currentText.length;
 	let currentOffset = wordRange.startOffset;
@@ -393,15 +508,15 @@ export function *letters(wordRange) {
 
 	let range;
 
-	while(currentOffset < max) {
-		 // currentLetter = currentText[currentOffset];
-		 range = document.createRange();
-		 range.setStart(currentText, currentOffset);
-		 range.setEnd(currentText, currentOffset+1);
+	while (currentOffset < max) {
+		// currentLetter = currentText[currentOffset];
+		range = document.createRange();
+		range.setStart(currentText, currentOffset);
+		range.setEnd(currentText, currentOffset + 1);
 
-		 yield range;
+		yield range;
 
-		 currentOffset += 1;
+		currentOffset += 1;
 	}
 }
 
@@ -475,7 +590,7 @@ export function isContainer(node) {
 	return container;
 }
 
-export function cloneNode(n, deep=false) {
+export function cloneNode(n, deep = false) {
 	return n.cloneNode(deep);
 }
 
@@ -536,7 +651,6 @@ export function nextValidNode(node) {
 	return node;
 }
 
-
 export function indexOf(node) {
 	let parent = node.parentNode;
 	if (!parent) {
@@ -552,9 +666,11 @@ export function child(node, index) {
 export function isVisible(node) {
 	if (isElement(node) && window.getComputedStyle(node).display !== "none") {
 		return true;
-	} else if (isText(node) &&
-			hasTextContent(node) &&
-			window.getComputedStyle(node.parentNode).display !== "none") {
+	} else if (
+		isText(node) &&
+		hasTextContent(node) &&
+		window.getComputedStyle(node.parentNode).display !== "none"
+	) {
 		return true;
 	}
 	return false;
@@ -563,8 +679,7 @@ export function isVisible(node) {
 export function hasContent(node) {
 	if (isElement(node)) {
 		return true;
-	} else if (isText(node) &&
-			node.textContent.trim().length) {
+	} else if (isText(node) && node.textContent.trim().length) {
 		return true;
 	}
 	return false;
@@ -579,8 +694,7 @@ export function hasTextContent(node) {
 				return true;
 			}
 		}
-	} else if (isText(node) &&
-			node.textContent.trim().length) {
+	} else if (isText(node) && node.textContent.trim().length) {
 		return true;
 	}
 	return false;
@@ -607,7 +721,6 @@ export function indexOfTextNode(node, parent) {
 	return index;
 }
 
-
 /**
  * Throughout, whitespace is defined as one of the characters
  *  "\t" TAB \u0009
@@ -630,8 +743,10 @@ export function indexOfTextNode(node, parent) {
  *  and otherwise false.
  */
 export function isIgnorable(node) {
-	return (node.nodeType === 8) || // A comment node
-		((node.nodeType === 3) && isAllWhitespace(node)); // a text node, all whitespace
+	return (
+		node.nodeType === 8 || // A comment node
+		(node.nodeType === 3 && isAllWhitespace(node))
+	); // a text node, all whitespace
 }
 
 /**
@@ -641,7 +756,7 @@ export function isIgnorable(node) {
  * @return {boolean} true if all of the text content of |nod| is whitespace, otherwise false.
  */
 export function isAllWhitespace(node) {
-	return !(/[^\t\n\r ]/.test(node.textContent));
+	return !/[^\t\n\r ]/.test(node.textContent);
 }
 
 /**
@@ -682,9 +797,34 @@ function getNodeWithNamedPage(node, limiter) {
 
 export function breakInsideAvoidParentNode(node) {
 	while ((node = node.parentNode)) {
-		if (node && node.dataset && node.dataset.breakInside === "avoid") {
+		if (
+			node &&
+			node.dataset &&
+			(node.dataset.breakInside === "avoid" ||
+				window.getComputedStyle(node).breakInside === "avoid")
+		) {
 			return node;
 		}
+	}
+	return null;
+}
+
+export function parentRowWithContentChildren(node, limiter) {
+	const parentCell = parentOf(node, "TD", limiter);
+
+	if (!parentCell) {
+		return null;
+	}
+	let hasContentSibling = false;
+	let nodeIdx = parentCell.nextElementSibling;
+	while (!hasContentSibling && nodeIdx) {
+		if (nodeIdx.textContent.trim() !== "" || nodeIdx.querySelector("img")) {
+			hasContentSibling = true;
+		}
+		nodeIdx = nodeIdx.nextElementSibling;
+	}
+	if (hasContentSibling) {
+		return parentOf(node, "TR", limiter);
 	}
 	return null;
 }
@@ -741,7 +881,7 @@ export function filterTree(content, func, what) {
 	let node;
 	let current;
 	node = treeWalker.nextNode();
-	while(node) {
+	while (node) {
 		current = node;
 		node = treeWalker.nextNode();
 		current.parentNode.removeChild(current);

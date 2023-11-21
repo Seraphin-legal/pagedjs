@@ -17,11 +17,12 @@ import {
 	nodeAfter,
 	nodeBefore,
 	parentOf,
+	parentRowWithContentChildren,
 	prevValidNode,
 	rebuildAncestors,
 	validNode,
 	walk,
-	words
+	words,
 } from "../utils/dom.js";
 import BreakToken from "./breaktoken.js";
 import RenderResult, { OverflowContentError } from "./renderresult.js";
@@ -35,17 +36,15 @@ const MAX_CHARS_PER_BREAK = 1500;
  * @class
  */
 class Layout {
-
 	constructor(element, hooks, options) {
 		this.element = element;
 
 		this.bounds = this.element.getBoundingClientRect();
 		this.parentBounds = this.element.offsetParent.getBoundingClientRect();
 		let gap = parseFloat(window.getComputedStyle(this.element).columnGap);
-	
 		if (gap) {
 			let leftMargin = this.bounds.left - this.parentBounds.left;
-			this.gap =  gap - leftMargin;	
+			this.gap = gap - leftMargin;
 		} else {
 			this.gap = 0;
 		}
@@ -87,7 +86,8 @@ class Layout {
 
 		let prevBreakToken = breakToken || new BreakToken(start);
 
-		this.hooks && this.hooks.onPageLayout.trigger(wrapper, prevBreakToken, this);
+		this.hooks &&
+			this.hooks.onPageLayout.trigger(wrapper, prevBreakToken, this);
 
 		while (!done && !newBreakToken) {
 			next = walker.next();
@@ -103,17 +103,27 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(
+					wrapper,
+					source,
+					bounds,
+					prevBreakToken
+				);
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
 					console.warn("Unable to layout item: ", prevNode);
-					this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
-					return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [prevNode]));
+					this.hooks &&
+						this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
+					return new RenderResult(
+						undefined,
+						new OverflowContentError("Unable to layout item", [prevNode])
+					);
 				}
 
 				this.rebuildTableFromBreakToken(newBreakToken, wrapper);
 
-				this.hooks && this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
+				this.hooks &&
+					this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
 				return new RenderResult(newBreakToken);
 			}
 
@@ -128,7 +138,12 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(
+					wrapper,
+					source,
+					bounds,
+					prevBreakToken
+				);
 
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
@@ -142,7 +157,10 @@ class Layout {
 					if (after) {
 						newBreakToken = new BreakToken(after);
 					} else {
-						return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+						return new RenderResult(
+							undefined,
+							new OverflowContentError("Unable to layout item", [node])
+						);
 					}
 				}
 
@@ -182,7 +200,12 @@ class Layout {
 			if (this.forceRenderBreak) {
 				this.hooks && this.hooks.layout.trigger(wrapper, this);
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(
+					wrapper,
+					source,
+					bounds,
+					prevBreakToken
+				);
 
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
@@ -198,7 +221,6 @@ class Layout {
 
 			// Only check x characters
 			if (length >= this.maxChars) {
-
 				this.hooks && this.hooks.layout.trigger(wrapper, this);
 
 				let imgs = wrapper.querySelectorAll("img");
@@ -206,7 +228,12 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(
+					wrapper,
+					source,
+					bounds,
+					prevBreakToken
+				);
 
 				if (newBreakToken) {
 					length = 0;
@@ -219,24 +246,30 @@ class Layout {
 					if (after) {
 						newBreakToken = new BreakToken(after);
 					} else {
-						this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
-						return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+						this.hooks &&
+							this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
+						return new RenderResult(
+							undefined,
+							new OverflowContentError("Unable to layout item", [node])
+						);
 					}
 				}
 			}
-
 		}
 
-		this.hooks && this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
+		this.hooks &&
+			this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
 		return new RenderResult(newBreakToken);
 	}
 
 	breakAt(node, offset = 0) {
-		let newBreakToken = new BreakToken(
+		let newBreakToken = new BreakToken(node, offset);
+		let breakHooks = this.hooks.onBreakToken.triggerSync(
+			newBreakToken,
+			undefined,
 			node,
-			offset
+			this
 		);
-		let breakHooks = this.hooks.onBreakToken.triggerSync(newBreakToken, undefined, node, this);
 		breakHooks.forEach((newToken) => {
 			if (typeof newToken != "undefined") {
 				newBreakToken = newToken;
@@ -249,14 +282,23 @@ class Layout {
 	shouldBreak(node, limiter) {
 		let previousNode = nodeBefore(node, limiter);
 		let parentNode = node.parentNode;
-		let parentBreakBefore = needsBreakBefore(node) && parentNode && !previousNode && needsBreakBefore(parentNode);
+		let parentBreakBefore =
+			needsBreakBefore(node) &&
+			parentNode &&
+			!previousNode &&
+			needsBreakBefore(parentNode);
 		let doubleBreakBefore;
 
 		if (parentBreakBefore) {
-			doubleBreakBefore = node.dataset.breakBefore === parentNode.dataset.breakBefore;
+			doubleBreakBefore =
+				node.dataset.breakBefore === parentNode.dataset.breakBefore;
 		}
 
-		return !doubleBreakBefore && needsBreakBefore(node) || needsPreviousBreakAfter(node) || needsPageBreak(node, previousNode);
+		return (
+			(!doubleBreakBefore && needsBreakBefore(node)) ||
+			needsPreviousBreakAfter(node) ||
+			needsPageBreak(node, previousNode)
+		);
 	}
 
 	forceBreak() {
@@ -277,7 +319,6 @@ class Layout {
 	}
 
 	append(node, dest, breakToken, shallow = true, rebuild = true) {
-
 		let clone = cloneNode(node, !shallow);
 
 		if (node.parentNode && isElement(node.parentNode)) {
@@ -290,7 +331,11 @@ class Layout {
 				parent = findElement(node.parentNode, fragment);
 				if (!parent) {
 					dest.appendChild(clone);
-				} else if (breakToken && isText(breakToken.node) && breakToken.offset > 0) {
+				} else if (
+					breakToken &&
+					isText(breakToken.node) &&
+					breakToken.offset > 0
+				) {
 					clone.textContent = clone.textContent.substring(breakToken.offset);
 					parent.appendChild(clone);
 				} else {
@@ -301,8 +346,6 @@ class Layout {
 			} else {
 				dest.appendChild(clone);
 			}
-
-
 		} else {
 			dest.appendChild(clone);
 		}
@@ -329,7 +372,9 @@ class Layout {
 			return;
 		}
 		let node = breakToken.node;
-		let td = isElement(node) ? node.closest("td") : node.parentElement.closest("td");
+		let td = isElement(node)
+			? node.closest("td")
+			: node.parentElement.closest("td");
 		if (td) {
 			let rendered = findElement(td, dest, true);
 			if (!rendered) {
@@ -349,18 +394,18 @@ class Layout {
 	}
 
 	async awaitImageLoaded(image) {
-		return new Promise(resolve => {
+		return new Promise((resolve) => {
 			if (image.complete !== true) {
 				image.onload = function () {
-					let {width, height} = window.getComputedStyle(image);
+					let { width, height } = window.getComputedStyle(image);
 					resolve(width, height);
 				};
 				image.onerror = function (e) {
-					let {width, height} = window.getComputedStyle(image);
+					let { width, height } = window.getComputedStyle(image);
 					resolve(width, height, e);
 				};
 			} else {
-				let {width, height} = window.getComputedStyle(image);
+				let { width, height } = window.getComputedStyle(image);
 				resolve(width, height);
 			}
 		});
@@ -384,7 +429,6 @@ class Layout {
 				breakNode = node;
 				break;
 			}
-
 		}
 		return breakNode;
 	}
@@ -411,9 +455,15 @@ class Layout {
 					if (!temp.nextSibling) {
 						// We need to ensure that the previous sibling of temp is fully rendered.
 						const renderedNodeFromSource = findElement(renderedNode, source);
-						const walker = document.createTreeWalker(renderedNodeFromSource, NodeFilter.SHOW_ELEMENT);
+						const walker = document.createTreeWalker(
+							renderedNodeFromSource,
+							NodeFilter.SHOW_ELEMENT
+						);
 						const lastChildOfRenderedNodeFromSource = walker.lastChild();
-						const lastChildOfRenderedNodeMatchingFromRendered = findElement(lastChildOfRenderedNodeFromSource, rendered);
+						const lastChildOfRenderedNodeMatchingFromRendered = findElement(
+							lastChildOfRenderedNodeFromSource,
+							rendered
+						);
 						// Check if we found that the last child in source
 						if (!lastChildOfRenderedNodeMatchingFromRendered) {
 							// Pending content to be rendered before virtual break token
@@ -439,7 +489,7 @@ class Layout {
 				parent = findElement(renderedNode, source);
 				index = indexOfTextNode(temp, parent);
 				// No seperatation for the first textNode of an element
-				if(index === 0) {
+				if (index === 0) {
 					node = parent;
 					offset = 0;
 				} else {
@@ -451,7 +501,10 @@ class Layout {
 			renderedNode = findElement(container.parentNode, rendered);
 
 			if (!renderedNode) {
-				renderedNode = findElement(prevValidNode(container.parentNode), rendered);
+				renderedNode = findElement(
+					prevValidNode(container.parentNode),
+					rendered
+				);
 			}
 
 			parent = findElement(renderedNode, source);
@@ -470,18 +523,25 @@ class Layout {
 			return;
 		}
 
-		return new BreakToken(
-			node,
-			offset
-		);
-
+		return new BreakToken(node, offset);
 	}
 
-	findBreakToken(rendered, source, bounds = this.bounds, prevBreakToken, extract = true) {
+	findBreakToken(
+		rendered,
+		source,
+		bounds = this.bounds,
+		prevBreakToken,
+		extract = true
+	) {
 		let overflow = this.findOverflow(rendered, bounds);
 		let breakToken, breakLetter;
 
-		let overflowHooks = this.hooks.onOverflow.triggerSync(overflow, rendered, bounds, this);
+		let overflowHooks = this.hooks.onOverflow.triggerSync(
+			overflow,
+			rendered,
+			bounds,
+			this
+		);
 		overflowHooks.forEach((newOverflow) => {
 			if (typeof newOverflow != "undefined") {
 				overflow = newOverflow;
@@ -491,7 +551,12 @@ class Layout {
 		if (overflow) {
 			breakToken = this.createBreakToken(overflow, rendered, source);
 			// breakToken is nullable
-			let breakHooks = this.hooks.onBreakToken.triggerSync(breakToken, overflow, rendered, this);
+			let breakHooks = this.hooks.onBreakToken.triggerSync(
+				breakToken,
+				overflow,
+				rendered,
+				this
+			);
 			breakHooks.forEach((newToken) => {
 				if (typeof newToken != "undefined") {
 					breakToken = newToken;
@@ -503,28 +568,50 @@ class Layout {
 				return breakToken;
 			}
 
-			if (breakToken && breakToken["node"] && breakToken["offset"] && breakToken["node"].textContent) {
-				breakLetter = breakToken["node"].textContent.charAt(breakToken["offset"]);
+			if (
+				breakToken &&
+				breakToken["node"] &&
+				breakToken["offset"] &&
+				breakToken["node"].textContent
+			) {
+				breakLetter = breakToken["node"].textContent.charAt(
+					breakToken["offset"]
+				);
 			} else {
 				breakLetter = undefined;
 			}
 
 			if (breakToken && breakToken.node && extract) {
 				let removed = this.removeOverflow(overflow, breakLetter);
-				this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
+				this.hooks &&
+					this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
 			}
-
 		}
 		return breakToken;
 	}
 
 	hasOverflow(element, bounds = this.bounds) {
 		let constrainingElement = element && element.parentNode; // this gets the element, instead of the wrapper for the width workaround
-		let {width, height} = element.getBoundingClientRect();
+		let { width, height } =
+			element.childElementCount > 0
+				? {
+						width: [...element.children]
+							.map((c) => c.offsetWidth)
+							.reduce((partialsum, a) => partialsum + a, 0),
+						height: [...element.children]
+							.map((c) => c.offsetHeight)
+							.reduce((partialsum, a) => partialsum + a, 0),
+				  }
+				: 
+				element.getBoundingClientRect();
 		let scrollWidth = constrainingElement ? constrainingElement.scrollWidth : 0;
-		let scrollHeight = constrainingElement ? constrainingElement.scrollHeight : 0;
-		return Math.max(Math.floor(width), scrollWidth) > Math.round(bounds.width) ||
-			Math.max(Math.floor(height), scrollHeight) > Math.round(bounds.height);
+		let scrollHeight = constrainingElement
+			? constrainingElement.scrollHeight
+			: 0;
+		return (
+			Math.max(Math.floor(width), scrollWidth) > Math.round(bounds.width) ||
+			Math.max(Math.floor(height), scrollHeight) > Math.round(bounds.height)
+		);
 	}
 
 	findOverflow(rendered, bounds = this.bounds, gap = this.gap) {
@@ -562,7 +649,10 @@ class Layout {
 
 					// Check if the node is inside a break-inside: avoid table cell
 					const insideTableCell = parentOf(node, "TD", rendered);
-					if (insideTableCell && window.getComputedStyle(insideTableCell)["break-inside"] === "avoid") {
+					if (
+						insideTableCell &&
+						window.getComputedStyle(insideTableCell)["break-inside"] === "avoid"
+					) {
 						// breaking inside a table cell produces unexpected result, as a workaround, we forcibly avoid break inside in a cell.
 						// But we take the whole row, not just the cell that is causing the break.
 						prev = insideTableCell.parentElement;
@@ -570,7 +660,9 @@ class Layout {
 						let styles = window.getComputedStyle(node);
 						isFloat = styles.getPropertyValue("float") !== "none";
 						skip = styles.getPropertyValue("break-inside") === "avoid";
-						breakAvoid = node.dataset.breakBefore === "avoid" || node.dataset.previousBreakAfter === "avoid";
+						breakAvoid =
+							node.dataset.breakBefore === "avoid" ||
+							node.dataset.previousBreakAfter === "avoid";
 						prev = breakAvoid && nodeBefore(node, rendered);
 						br = node.tagName === "BR" || node.tagName === "WBR";
 					}
@@ -586,7 +678,8 @@ class Layout {
 						let container = tableRow.parentElement;
 						if (["TBODY", "THEAD"].includes(container.nodeName)) {
 							let styles = window.getComputedStyle(container);
-							if (styles.getPropertyValue("break-inside") === "avoid") prev = container;
+							if (styles.getPropertyValue("break-inside") === "avoid")
+								prev = container;
 						}
 
 						// Check if the node is inside a row with a rowspan
@@ -603,7 +696,9 @@ class Layout {
 								while (previousRow !== null) {
 									previousRowColumnCount = 0;
 									for (const cell of Array.from(previousRow.cells)) {
-										previousRowColumnCount += parseInt(cell.getAttribute("colspan") || "1");
+										previousRowColumnCount += parseInt(
+											cell.getAttribute("colspan") || "1"
+										);
 									}
 									if (previousRowColumnCount === columnCount) {
 										break;
@@ -624,8 +719,14 @@ class Layout {
 					}
 
 					if (!br && !isFloat && isElement(node)) {
+						let parentRow;
 						range = document.createRange();
-						range.selectNode(node);
+						if (insideTableCell && (parentRow = parentOf(insideTableCell, "TR", rendered))) {
+							// break on the row intead of node inside cell, prevent empty cell not render correctly
+							range.selectNode(parentRow);
+						} else {
+							range.selectNode(node);
+						}
 						break;
 					}
 
@@ -634,13 +735,13 @@ class Layout {
 						range.selectNode(node);
 						break;
 					}
-
 				}
 
-				if (!range && isText(node) &&
-					node.textContent.trim().length &&
-					!breakInsideAvoidParentNode(node.parentNode)) {
-
+				if (
+					!range &&
+					isText(node) &&
+					node.textContent.trim().length
+				) {
 					let rects = getClientRects(node);
 					let rect;
 					left = 0;
@@ -656,21 +757,31 @@ class Layout {
 					}
 
 					if (left >= end || top >= vEnd) {
-						// The text node overflows the current print page so it needs to be split.
+						let parentAvoidBreak = breakInsideAvoidParentNode(node.parentNode);
+						const parentWithContentChildren = !parentAvoidBreak ? parentRowWithContentChildren(node, rendered) : null;
+
 						range = document.createRange();
-						offset = this.textBreak(node, start, end, vStart, vEnd);
-						if (offset === 0) {
-							// Not even a single character from the text node fits the current print page so the text
-							// node needs to be moved to the next print page.
-							range.setStartBefore(node);
-						} else if (offset) {
-							// Only the text before the offset fits the current print page. The rest needs to be moved
-							// to the next print page.
-							range.setStart(node, offset);
+						if (parentAvoidBreak) {
+							if (parentAvoidBreak.tagName === "TD") parentAvoidBreak = parentAvoidBreak.parentNode;
+							range.selectNode(parentAvoidBreak);
+						} else if (parentWithContentChildren) {
+							range.selectNode(parentWithContentChildren);
 						} else {
-							// Undefined offset is unexpected because we know that the text node is not empty (not even
-							// blank, because we check node.textContent.trim().length above).
-							range = undefined;
+							// The text node overflows the current print page so it needs to be split.
+							offset = this.textBreak(node, start, end, vStart, vEnd);
+							if (offset === 0) {
+								// Not even a single character from the text node fits the current print page so the text
+								// node needs to be moved to the next print page.
+								range.setStartBefore(node);
+							} else if (offset) {
+								// Only the text before the offset fits the current print page. The rest needs to be moved
+								// to the next print page.
+								range.setStart(node, offset);
+							} else {
+								// Undefined offset is unexpected because we know that the text node is not empty (not even
+								// blank, because we check node.textContent.trim().length above).
+								range = undefined;
+							}
 						}
 						break;
 					}
@@ -682,9 +793,7 @@ class Layout {
 					if (next) {
 						walker = walk(next, rendered);
 					}
-
 				}
-
 			}
 		}
 
@@ -693,7 +802,6 @@ class Layout {
 			range.setEndAfter(rendered.lastChild);
 			return range;
 		}
-
 	}
 
 	findEndToken(rendered, source) {
@@ -718,7 +826,6 @@ class Layout {
 		}
 
 		if (isText(lastChild)) {
-
 			if (lastChild.parentNode.dataset.ref) {
 				lastNodeIndex = indexOf(lastChild);
 				lastChild = lastChild.parentNode;
@@ -799,14 +906,13 @@ class Layout {
 					}
 				}
 			}
-
 		}
 
 		return offset;
 	}
 
 	removeOverflow(overflow, breakLetter) {
-		let {startContainer} = overflow;
+		let { startContainer } = overflow;
 		let extracted = overflow.extractContents();
 
 		this.hyphenateAtBreak(startContainer, breakLetter);
@@ -821,7 +927,9 @@ class Layout {
 
 			// Add a hyphen if previous character is a letter or soft hyphen
 			if (
-				(breakLetter && /^\w|\u00AD$/.test(prevLetter) && /^\w|\u00AD$/.test(breakLetter)) ||
+				(breakLetter &&
+					/^\w|\u00AD$/.test(prevLetter) &&
+					/^\w|\u00AD$/.test(breakLetter)) ||
 				(!breakLetter && /^\w|\u00AD$/.test(prevLetter))
 			) {
 				startContainer.parentNode.classList.add("pagedjs_hyphen");
