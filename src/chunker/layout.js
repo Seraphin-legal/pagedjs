@@ -627,6 +627,7 @@ class Layout {
 
 		// Find Start
 		let next, done, node, offset, skip, breakAvoid, prev, br;
+		let previousOverflowingNode = null;
 		while (!done) {
 			next = walker.next();
 			done = next.done;
@@ -642,13 +643,19 @@ class Layout {
 				let right = Math.floor(pos.right);
 				let top = Math.round(pos.top);
 				let bottom = Math.floor(pos.bottom);
+				const width = pos.width;
+				const height = pos.height;
 
 				if (!range && (left >= end || top >= vEnd)) {
 					// Check if it is a float
 					let isFloat = false;
 
+					if (previousOverflowingNode && !previousOverflowingNode.contains(node)) {
+						node = previousOverflowingNode;
+					}
+
 					// Check if the node is inside a break-inside: avoid table cell
-					const insideTableCell = parentOf(node, "TD", rendered);
+					const insideTableCell = node.tagName === "TD" ? node : parentOf(node, "TD", rendered);
 					if (
 						insideTableCell &&
 						window.getComputedStyle(insideTableCell)["break-inside"] === "avoid"
@@ -735,6 +742,8 @@ class Layout {
 						range.selectNode(node);
 						break;
 					}
+				} else if (!range && (left + width >= end || top + height >= vEnd)) {
+					previousOverflowingNode = node;
 				}
 
 				if (
