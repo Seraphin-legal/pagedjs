@@ -277,7 +277,6 @@ export function rebuildAncestors(node) {
 			if (needFillMissingCells) {
 				// create missing columns with [rowspan]
 				let currentCol = parent.parentNode.firstElementChild;
-
 				for (let idx = 0; idx <= xMax; ++idx) {
 					const currentColXStart = parseInt(currentCol.dataset.xStart, 10);
 					let append = false;
@@ -308,11 +307,12 @@ export function rebuildAncestors(node) {
 							currentY <= c.yEnd
 					);
 					if (!cell) {
-						console.warn("Cell not found ????", idx, currentY, dataCellsSize);
+						console.warn("Cell not found", idx, currentY, dataCellsSize);
 						continue;
 					}
 					// insert cell
 					const newCell = cell.node.cloneNode(false);
+					newCell.classList.add("added");
 					newCell.innerHTML = ""; // empty the cell
 					const newCellYEnd = parseInt(newCell.dataset.yEnd, 10);
 					newCell.setAttribute("rowspan", newCellYEnd - currentY + 1);

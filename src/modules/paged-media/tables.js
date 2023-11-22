@@ -12,6 +12,17 @@ class Tables extends Handler {
 		});
 	}
 
+	afterPageLayout(pageElement, page, breakToken) {
+		const addedCells = [...page.area.querySelectorAll("td.added")];
+		// check and remove duplicated cell
+		for (const cell of addedCells) {
+			const existingCell = page.area.querySelector(`td[data-ref="${cell.dataset.ref}"]:not(.added)`);
+			if (existingCell) {
+				cell.remove();
+			}
+		}
+	}
+
 	setTableCellsSizeData(table) {
 		const cellsPosData = [];
 		const rows = [...table.querySelectorAll(":scope > tbody > tr")];

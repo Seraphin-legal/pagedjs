@@ -682,34 +682,34 @@ class Layout {
 								prev = container;
 						}
 
-						// Check if the node is inside a row with a rowspan
-						const table = parentOf(tableRow, "TABLE", rendered);
-						const rowspan = table.querySelector("[colspan]");
-						if (table && rowspan) {
-							let columnCount = 0;
-							for (const cell of Array.from(table.rows[0].cells)) {
-								columnCount += parseInt(cell.getAttribute("colspan") || "1");
-							}
-							if (tableRow.cells.length !== columnCount) {
-								let previousRow = tableRow.previousElementSibling;
-								let previousRowColumnCount;
-								while (previousRow !== null) {
-									previousRowColumnCount = 0;
-									for (const cell of Array.from(previousRow.cells)) {
-										previousRowColumnCount += parseInt(
-											cell.getAttribute("colspan") || "1"
-										);
-									}
-									if (previousRowColumnCount === columnCount) {
-										break;
-									}
-									previousRow = previousRow.previousElementSibling;
-								}
-								if (previousRowColumnCount === columnCount) {
-									prev = previousRow;
-								}
-							}
-						}
+						// // Check if the node is inside a row with a rowspan
+						// const table = parentOf(tableRow, "TABLE", rendered);
+						// const rowspan = table.querySelector("[rowspan]");
+						// if (table && rowspan) {
+						// 	let columnCount = 0;
+						// 	for (const cell of Array.from(table.rows[0].cells)) {
+						// 		columnCount += parseInt(cell.getAttribute("rowspan") || "1");
+						// 	}
+						// 	if (tableRow.cells.length !== columnCount) {
+						// 		let previousRow = tableRow.previousElementSibling;
+						// 		let previousRowColumnCount;
+						// 		while (previousRow !== null) {
+						// 			previousRowColumnCount = 0;
+						// 			for (const cell of Array.from(previousRow.cells)) {
+						// 				previousRowColumnCount += parseInt(
+						// 					cell.getAttribute("rowspan") || "1"
+						// 				);
+						// 			}
+						// 			if (previousRowColumnCount === columnCount) {
+						// 				break;
+						// 			}
+						// 			previousRow = previousRow.previousElementSibling;
+						// 		}
+						// 		if (previousRowColumnCount === columnCount) {
+						// 			prev = previousRow;
+						// 		}
+						// 	}
+						// }
 					}
 
 					if (prev) {
