@@ -602,8 +602,7 @@ class Layout {
 							.map((c) => c.offsetHeight)
 							.reduce((partialsum, a) => partialsum + a, 0),
 				  }
-				: 
-				element.getBoundingClientRect();
+				: element.getBoundingClientRect();
 		let scrollWidth = constrainingElement ? constrainingElement.scrollWidth : 0;
 		let scrollHeight = constrainingElement
 			? constrainingElement.scrollHeight
@@ -650,12 +649,22 @@ class Layout {
 					// Check if it is a float
 					let isFloat = false;
 
-					if (previousOverflowingNode && !previousOverflowingNode.contains(node)) {
+					if (
+						previousOverflowingNode &&
+						!previousOverflowingNode.contains(node) &&
+						parentOf(previousOverflowingNode, "TABLE", rendered)
+					) {
+						// set overflowing node to previous overflowing node found if the current node is in a table
 						node = previousOverflowingNode;
+						if (isText(node)) {
+							// do not split from text, get the row
+							node = parentOf(node, "TR", rendered);
+						}
 					}
 
 					// Check if the node is inside a break-inside: avoid table cell
-					const insideTableCell = node.tagName === "TD" ? node : parentOf(node, "TD", rendered);
+					const insideTableCell =
+						node.tagName === "TD" ? node : parentOf(node, "TD", rendered);
 					if (
 						insideTableCell &&
 						window.getComputedStyle(insideTableCell)["break-inside"] === "avoid"
@@ -728,7 +737,10 @@ class Layout {
 					if (!br && !isFloat && isElement(node)) {
 						let parentRow;
 						range = document.createRange();
-						if (insideTableCell && (parentRow = parentOf(insideTableCell, "TR", rendered))) {
+						if (
+							insideTableCell &&
+							(parentRow = parentOf(insideTableCell, "TR", rendered))
+						) {
 							// break on the row intead of node inside cell, prevent empty cell not render correctly
 							range.selectNode(parentRow);
 						} else {
@@ -746,11 +758,7 @@ class Layout {
 					previousOverflowingNode = node;
 				}
 
-				if (
-					!range &&
-					isText(node) &&
-					node.textContent.trim().length
-				) {
+				if (!range && isText(node) && node.textContent.trim().length) {
 					let rects = getClientRects(node);
 					let rect;
 					left = 0;
@@ -767,11 +775,14 @@ class Layout {
 
 					if (left >= end || top >= vEnd) {
 						let parentAvoidBreak = breakInsideAvoidParentNode(node.parentNode);
-						const parentWithContentChildren = !parentAvoidBreak ? parentRowWithContentChildren(node, rendered) : null;
+						const parentWithContentChildren = !parentAvoidBreak
+							? parentRowWithContentChildren(node, rendered)
+							: null;
 
 						range = document.createRange();
 						if (parentAvoidBreak) {
-							if (parentAvoidBreak.tagName === "TD") parentAvoidBreak = parentAvoidBreak.parentNode;
+							if (parentAvoidBreak.tagName === "TD")
+								parentAvoidBreak = parentAvoidBreak.parentNode;
 							range.selectNode(parentAvoidBreak);
 						} else if (parentWithContentChildren) {
 							range.selectNode(parentWithContentChildren);
