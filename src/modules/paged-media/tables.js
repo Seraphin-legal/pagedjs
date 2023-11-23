@@ -21,6 +21,14 @@ class Tables extends Handler {
 				cell.remove();
 			}
 		}
+		const mainContainer = page.area.querySelector("main");
+		if (mainContainer) {
+			const lastElementTable = mainContainer.querySelector(":scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > div:last-child > table, :scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > table:last-child, :scope > div:last-child > table, :scope > table:last-child");
+
+			if (lastElementTable) {
+				page.area.style.columnWidth = "auto"; // show the content that slicely "overflowing"
+			}
+		}
 	}
 
 	setTableCellsSizeData(table) {
