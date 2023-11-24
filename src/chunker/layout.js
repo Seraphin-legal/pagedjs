@@ -533,7 +533,12 @@ class Layout {
 		prevBreakToken,
 		extract = true
 	) {
-		let overflow = this.findOverflow(rendered, bounds);
+		let overflow = this.findOverflow(
+			rendered,
+			bounds,
+			undefined,
+			prevBreakToken
+		);
 		let breakToken, breakLetter;
 
 		let overflowHooks = this.hooks.onOverflow.triggerSync(
@@ -613,7 +618,7 @@ class Layout {
 		);
 	}
 
-	findOverflow(rendered, bounds = this.bounds, gap = this.gap) {
+	findOverflow(rendered, bounds = this.bounds, gap = this.gap, prevBreakToken) {
 		if (!this.hasOverflow(rendered, bounds)) return;
 
 		let start = Math.floor(bounds.left);
@@ -655,10 +660,28 @@ class Layout {
 						parentOf(previousOverflowingNode, "TABLE", rendered)
 					) {
 						// set overflowing node to previous overflowing node found if the current node is in a table
-						node = previousOverflowingNode;
-						if (isText(node)) {
+						if (isText(previousOverflowingNode)) {
 							// do not split from text, get the row
-							node = parentOf(node, "TR", rendered);
+							const parentRow = parentOf(
+								previousOverflowingNode,
+								"TR",
+								rendered
+							);
+							const previousBreakRow = parentOf(
+								prevBreakToken.node,
+								"TR",
+								rendered
+							);
+
+							if (parentRow.dataset.ref !== previousBreakRow?.dataset.ref) {
+								if (parentRow.dataset.ref !== parentOf(node, "TR", rendered)?.dataset.ref) {
+									node = parentRow;
+								} else {
+									node = previousOverflowingNode;
+								}
+							}
+						} else {
+							node = previousOverflowingNode;
 						}
 					}
 
@@ -739,7 +762,9 @@ class Layout {
 						range = document.createRange();
 						if (
 							insideTableCell &&
-							(parentRow = parentOf(insideTableCell, "TR", rendered))
+							(parentRow = parentOf(insideTableCell, "TR", rendered)) &&
+							parentRow.dataset.ref !==
+								parentOf(prevBreakToken.node, "TR", rendered)?.dataset.ref
 						) {
 							// break on the row intead of node inside cell, prevent empty cell not render correctly
 							range.selectNode(parentRow);
@@ -750,8 +775,14 @@ class Layout {
 					}
 
 					if (isText(node) && node.textContent.trim().length) {
-						range = document.createRange();
-						range.selectNode(node);
+						const parentWithContentChildren = parentRowWithContentChildren(node, rendered);
+
+						if (parentRowWithContentChildren) {
+							range.selectNode(parentWithContentChildren);
+						} else {
+							range = document.createRange();
+							range.selectNode(node);
+						}
 						break;
 					}
 				} else if (!range && (left + width >= end || top + height >= vEnd)) {
