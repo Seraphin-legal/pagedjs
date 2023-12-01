@@ -809,7 +809,7 @@ export function breakInsideAvoidParentNode(node) {
 	return null;
 }
 
-export function parentRowWithContentChildren(node, limiter) {
+export function parentRowWithNextSiblingContent(node, limiter) {
 	const parentCell = parentOf(node, "TD", limiter);
 
 	if (!parentCell) {

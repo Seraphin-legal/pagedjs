@@ -659,6 +659,9 @@ export default `
 	text-align-last: justify;
 }
 
+.debug-find-overflow table:last-child td {
+	vertical-align: top !important;
+}
 
 @media print {
 	html {

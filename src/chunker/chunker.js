@@ -3,9 +3,7 @@ import ContentParser from "./parser.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
 import Queue from "../utils/queue.js";
-import {
-	requestIdleCallback
-} from "../utils/utils.js";
+import { requestIdleCallback } from "../utils/utils.js";
 import { OverflowContentError } from "./renderresult.js";
 
 const MAX_PAGES = false;
@@ -141,7 +139,6 @@ class Chunker {
 
 		this.pageTemplate = document.createElement("template");
 		this.pageTemplate.innerHTML = TEMPLATE;
-
 	}
 
 	async flow(content, renderTo) {
@@ -182,8 +179,6 @@ class Chunker {
 
 		this.emit("rendered", this.pages);
 
-
-
 		return this;
 	}
 
@@ -223,9 +218,11 @@ class Chunker {
 
 		let loops = 0;
 		while (!done) {
-			result = await this.q.enqueue(() => { return this.renderAsync(renderer); });
+			result = await this.q.enqueue(() => {
+				return this.renderAsync(renderer);
+			});
 			done = result.done;
-			if(MAX_LAYOUTS) {
+			if (MAX_LAYOUTS) {
 				loops += 1;
 				if (loops >= MAX_LAYOUTS) {
 					this.stop();
@@ -248,7 +245,7 @@ class Chunker {
 	}
 
 	renderOnIdle(renderer) {
-		return new Promise(resolve => {
+		return new Promise((resolve) => {
 			requestIdleCallback(async () => {
 				if (this.stopped) {
 					return resolve({ done: true, canceled: true });
@@ -275,7 +272,7 @@ class Chunker {
 		}
 	}
 
-	async handleBreaks(node, force) {
+	async handleBreaks(nodeBreak, force) {
 		let currentPage = this.total + 1;
 		let currentPosition = currentPage % 2 === 0 ? "left" : "right";
 		// TODO: Recto and Verso should reverse for rtl languages
@@ -288,44 +285,73 @@ class Chunker {
 			return;
 		}
 
-		if (node &&
+		[...(Array.isArray(nodeBreak) ? nodeBreak : [nodeBreak])].forEach((node) => {
+			if (
+				node &&
 				typeof node.dataset !== "undefined" &&
-				typeof node.dataset.previousBreakAfter !== "undefined") {
-			previousBreakAfter = node.dataset.previousBreakAfter;
-		}
-
-		if (node &&
+				typeof node.dataset.previousBreakAfter !== "undefined"
+			) {
+				previousBreakAfter = node.dataset.previousBreakAfter;
+			}
+	
+			if (
+				node &&
 				typeof node.dataset !== "undefined" &&
-				typeof node.dataset.breakBefore !== "undefined") {
-			breakBefore = node.dataset.breakBefore;
-		}
+				typeof node.dataset.breakBefore !== "undefined"
+			) {
+				breakBefore = node.dataset.breakBefore;
+			}
+		});
 
 		if (force) {
 			page = this.addPage(true);
-		} else if( previousBreakAfter &&
-				(previousBreakAfter === "left" || previousBreakAfter === "right") &&
-				previousBreakAfter !== currentPosition) {
+		} else if (
+			previousBreakAfter &&
+			(previousBreakAfter === "left" || previousBreakAfter === "right") &&
+			previousBreakAfter !== currentPosition
+		) {
 			page = this.addPage(true);
-		} else if( previousBreakAfter &&
-				(previousBreakAfter === "verso" || previousBreakAfter === "recto") &&
-				previousBreakAfter !== currentSide) {
+		} else if (
+			previousBreakAfter &&
+			(previousBreakAfter === "verso" || previousBreakAfter === "recto") &&
+			previousBreakAfter !== currentSide
+		) {
 			page = this.addPage(true);
-		} else if( breakBefore &&
-				(breakBefore === "left" || breakBefore === "right") &&
-				breakBefore !== currentPosition) {
+		} else if (
+			breakBefore &&
+			(breakBefore === "left" || breakBefore === "right") &&
+			breakBefore !== currentPosition
+		) {
 			page = this.addPage(true);
-		} else if( breakBefore &&
-				(breakBefore === "verso" || breakBefore === "recto") &&
-				breakBefore !== currentSide) {
+		} else if (
+			breakBefore &&
+			(breakBefore === "verso" || breakBefore === "recto") &&
+			breakBefore !== currentSide
+		) {
 			page = this.addPage(true);
 		}
 
 		if (page) {
-			await this.hooks.beforePageLayout.trigger(page, undefined, undefined, this);
+			await this.hooks.beforePageLayout.trigger(
+				page,
+				undefined,
+				undefined,
+				this
+			);
 			this.emit("page", page);
 			// await this.hooks.layout.trigger(page.element, page, undefined, this);
-			await this.hooks.afterPageLayout.trigger(page.element, page, undefined, this);
-			await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
+			await this.hooks.afterPageLayout.trigger(
+				page.element,
+				page,
+				undefined,
+				this
+			);
+			await this.hooks.finalizePage.trigger(
+				page.element,
+				page,
+				undefined,
+				this
+			);
 			this.emit("renderedPage", page);
 		}
 	}
@@ -334,36 +360,65 @@ class Chunker {
 		let breakToken = startAt || false;
 		let tokens = [];
 
-		while (breakToken !== undefined && (MAX_PAGES ? this.total < MAX_PAGES : true)) {
-
+		while (
+			breakToken !== undefined &&
+			(MAX_PAGES ? this.total < MAX_PAGES : true)
+		) {
 			if (breakToken && breakToken.node) {
 				await this.handleBreaks(breakToken.node);
+			} else if (
+				breakToken &&
+				Array.isArray(breakToken) &&
+				breakToken.length > 0
+			) {
+				await this.handleBreaks(breakToken.map((bt) => bt.node));
 			} else {
 				await this.handleBreaks(content.firstChild);
 			}
 
 			let page = this.addPage();
 
-			await this.hooks.beforePageLayout.trigger(page, content, breakToken, this);
+			await this.hooks.beforePageLayout.trigger(
+				page,
+				content,
+				breakToken,
+				this
+			);
 			this.emit("page", page);
 
 			// Layout content in the page, starting from the breakToken
 			breakToken = await page.layout(content, breakToken, this.maxChars);
-
 			if (breakToken) {
-				let newToken = breakToken.toJSON(true);
-				if (tokens.lastIndexOf(newToken) > -1) {
-					// loop
-					let err = new OverflowContentError("Layout repeated", [breakToken.node]);
-					console.error("Layout repeated at: ", breakToken.node);
-					return err;
-				} else {
-					tokens.push(newToken);
-				}
+				const breakTokenArray = Array.isArray(breakToken)
+					? breakToken
+					: [breakToken];
+				breakTokenArray.forEach((bToken) => {
+					let newToken = bToken.toJSON(true);
+					if (tokens.lastIndexOf(newToken) > -1) {
+						// loop
+						let err = new OverflowContentError("Layout repeated", [
+							bToken.node,
+						]);
+						console.error("Layout repeated at: ", bToken.node);
+						return err;
+					} else {
+						tokens.push(newToken);
+					}
+				});
 			}
 
-			await this.hooks.afterPageLayout.trigger(page.element, page, breakToken, this);
-			await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
+			await this.hooks.afterPageLayout.trigger(
+				page.element,
+				page,
+				breakToken,
+				this
+			);
+			await this.hooks.finalizePage.trigger(
+				page.element,
+				page,
+				undefined,
+				this
+			);
 			this.emit("renderedPage", page);
 
 			this.recoredCharLength(page.wrapper.textContent.length);
@@ -372,8 +427,6 @@ class Chunker {
 
 			// Stop if we get undefined, showing we have reached the end of the content
 		}
-
-
 	}
 
 	recoredCharLength(length) {
@@ -388,11 +441,11 @@ class Chunker {
 			this.charsPerBreak.shift();
 		}
 
-		this.maxChars = this.charsPerBreak.reduce((a, b) => a + b, 0) / (this.charsPerBreak.length);
+		this.maxChars =
+			this.charsPerBreak.reduce((a, b) => a + b, 0) / this.charsPerBreak.length;
 	}
 
-	removePages(fromIndex=0) {
-
+	removePages(fromIndex = 0) {
 		if (fromIndex >= this.pages.length) {
 			return;
 		}
@@ -414,7 +467,13 @@ class Chunker {
 	addPage(blank) {
 		let lastPage = this.pages[this.pages.length - 1];
 		// Create a new page from the template
-		let page = new Page(this.pagesArea, this.pageTemplate, blank, this.hooks, this.settings);
+		let page = new Page(
+			this.pagesArea,
+			this.pageTemplate,
+			blank,
+			this.hooks,
+			this.settings
+		);
 
 		this.pages.push(page);
 
@@ -448,24 +507,18 @@ class Chunker {
 					this.rendered = false;
 
 					this.q.enqueue(async () => {
-
 						this.start();
 
 						await this.render(this.source, this.breakToken);
 
 						this.rendered = true;
-
 					});
 				}
-
-
 			});
 
 			page.onUnderflow((overflowToken) => {
 				// console.log("underflow on", page.id, overflowToken);
-
 				// page.append(this.source, overflowToken);
-
 			});
 		}
 
@@ -528,12 +581,20 @@ class Chunker {
 		this.emit("page", page);
 
 		for (const className of originalPage.element.classList) {
-			if (className !== "pagedjs_left_page" && className !== "pagedjs_right_page") {
+			if (
+				className !== "pagedjs_left_page" &&
+				className !== "pagedjs_right_page"
+			) {
 				page.element.classList.add(className);
 			}
 		}
 
-		await this.hooks.afterPageLayout.trigger(page.element, page, undefined, this);
+		await this.hooks.afterPageLayout.trigger(
+			page.element,
+			page,
+			undefined,
+			this
+		);
 		await this.hooks.finalizePage.trigger(page.element, page, undefined, this);
 		this.emit("renderedPage", page);
 	}
@@ -542,12 +603,15 @@ class Chunker {
 		let fontPromises = [];
 		(document.fonts || []).forEach((fontFace) => {
 			if (fontFace.status !== "loaded") {
-				let fontLoaded = fontFace.load().then((r) => {
-					return fontFace.family;
-				}, (r) => {
-					console.warn("Failed to preload font-family:", fontFace.family);
-					return fontFace.family;
-				});
+				let fontLoaded = fontFace.load().then(
+					(r) => {
+						return fontFace.family;
+					},
+					(r) => {
+						console.warn("Failed to preload font-family:", fontFace.family);
+						return fontFace.family;
+					}
+				);
 				fontPromises.push(fontLoaded);
 			}
 		});
@@ -560,7 +624,6 @@ class Chunker {
 		this.pagesArea.remove();
 		this.pageTemplate.remove();
 	}
-
 }
 
 EventEmitter(Chunker.prototype);
