@@ -777,10 +777,10 @@ class Layout {
 					if (isText(node) && node.textContent.trim().length) {
 						const parentWithContentChildren = parentRowWithContentChildren(node, rendered);
 
+						range = document.createRange();
 						if (parentRowWithContentChildren) {
 							range.selectNode(parentWithContentChildren);
 						} else {
-							range = document.createRange();
 							range.selectNode(node);
 						}
 						break;
