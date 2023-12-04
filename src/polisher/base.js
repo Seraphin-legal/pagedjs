@@ -659,7 +659,7 @@ export default `
 	text-align-last: justify;
 }
 
-.debug-find-overflow table:last-child td {
+.process-find-overflow table:last-child td {
 	vertical-align: top !important;
 }
 
