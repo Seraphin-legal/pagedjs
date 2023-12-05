@@ -28,6 +28,22 @@ class Tables extends Handler {
 			if (lastElementTable) {
 				page.area.style.columnWidth = "auto"; // show the content that slicely "overflowing"
 			}
+
+			const previousPageMainContainer = pageElement.previousElementSibling?.querySelector(".pagedjs_area > .pagedjs_page_content > div main");
+
+			if (previousPageMainContainer) {
+				const previousPageLastElementTable = previousPageMainContainer.querySelector(":scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > div:last-child > table, :scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > table:last-child, :scope > div:last-child > table, :scope > table:last-child");
+
+				if (previousPageLastElementTable) {
+					const currentPageSameFirstTable = mainContainer.querySelector(`:scope > div[data-type="clause"]:first-child > div[data-type="variant"]:first-child > div:first-child > table[data-ref="${previousPageLastElementTable.dataset.ref}"], :scope > div[data-type="clause"]:first-child > div[data-type="variant"]:first-child > table[data-ref="${previousPageLastElementTable.dataset.ref}"]:first-child, :scope > div:first-child > table[data-ref="${previousPageLastElementTable.dataset.ref}"], :scope > table[data-ref="${previousPageLastElementTable.dataset.ref}"]:first-child`);
+					let lastPreviousPageRow;
+
+					if (currentPageSameFirstTable && (lastPreviousPageRow = previousPageLastElementTable.querySelector("tbody tr:last-child")) && currentPageSameFirstTable.querySelector(`tbody tr[data-ref="${lastPreviousPageRow.dataset.ref}"]:nth-child(2)`)) {
+						// remove last row from previous page as it is overflowing and duplicated
+						lastPreviousPageRow.remove();
+					}
+				}
+			}
 		}
 	}
 
