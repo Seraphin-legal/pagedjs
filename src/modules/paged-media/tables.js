@@ -58,6 +58,11 @@ class Tables extends Handler {
 						if (previousTBody.childNodes.length === 0) {
 							previousPageLastElementTable.remove();
 						}
+					} else if (
+						mainContainer.querySelectorAll("table")[1]?.dataset.ref ===
+						previousPageLastElementTable.dataset.ref
+					) {
+						previousPageLastElementTable.remove();
 					}
 				}
 			}
