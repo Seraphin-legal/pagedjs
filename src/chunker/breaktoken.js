@@ -41,7 +41,7 @@ class BreakToken {
 		if (isElement(this.node) && this.node.dataset.ref) {
 			node = this.node.dataset.ref;
 		} else if (hash) {
-			node = this.node.parentElement.dataset.ref;
+			node = this.node.parentElement?.dataset.ref;
 		}
 
 		if (this.node.parentElement) {

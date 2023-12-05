@@ -113,6 +113,10 @@ class Layout {
 				prevNode = node;
 				node = next.value;
 				done = next.done;
+				const col = parentOf(node, "TD", source);
+				if (col) {
+					currentCol = col;
+				}
 			}
 
 			if (!node) {
@@ -258,12 +262,23 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				if (
-					this.hasOverflow(wrapper, bounds) &&
-					currentCol?.nextElementSibling
-				) {
-					let nextCell = currentCol.nextElementSibling;
+				if (this.hasOverflow(wrapper, bounds) && currentCol) {
+					// add missing content in the current columns
+					let cellChildIdx = currentCol.firstChild;
+					while (cellChildIdx && !cellChildIdx.contains(node)) {
+						cellChildIdx = cellChildIdx.nextSibling;
+					}
+					if (cellChildIdx?.nextSibling) {
+						cellChildIdx = cellChildIdx.nextSibling;
+						while (cellChildIdx) {
+							this.hooks && this.hooks.layoutNode.trigger(cellChildIdx);
+							this.append(cellChildIdx, wrapper, breakToken, false);
+							cellChildIdx = cellChildIdx.nextSibling;
+						}
+					}
 
+					// create missing cells
+					let nextCell = currentCol.nextElementSibling;
 					while (nextCell) {
 						if (
 							!wrapper.querySelector(`[data-ref="${nextCell.dataset.ref}"]`)
@@ -308,7 +323,7 @@ class Layout {
 							} else if (nextCell.dataset.renderEnded !== "true") {
 								// duplicate column
 								this.hooks && this.hooks.layoutNode.trigger(nextCell);
-								this.append(nextCell, wrapper, breakToken, false);
+								this.append(nextCell, wrapper, breakToken, nextCell.dataset.renderEnded === "true");
 							}
 						}
 						nextCell = nextCell.nextElementSibling;
@@ -511,7 +526,7 @@ class Layout {
 			let node = breakToken.node;
 			let td = isElement(node)
 				? node.closest("td")
-				: node.parentElement.closest("td");
+				: node.parentElement?.closest("td");
 			if (td) {
 				let rendered = findElement(td, dest, true);
 				if (!rendered) {
@@ -1056,17 +1071,21 @@ class Layout {
 							const text = document.createTextNode("\u200B");
 							node.appendChild(text);
 							const textDest = document.createTextNode("\u200B");
-							node.appendChild(textDest);
+							nodeIdx.appendChild(textDest);
 						}
 						// create range at the end of the cell
 						range = document.createRange();
-						range.setStartBefore(node.lastChild);
-						range.setEndAfter(node.lastChild);
+						range.setStartBefore(nodeIdx.lastChild);
+						range.setEndAfter(nodeIdx.lastChild);
 						rangeArray.push(range);
 						node.setAttribute("data-render-ended", "true");
 						nodeIdx.setAttribute("data-render-ended", "true");
 					}
 					nodeIdx = nodeIdx.nextElementSibling;
+				}
+				if (firstOverflowingCell.parentNode.nextSibling) {
+					// set selection to the end for the last range
+					rangeArray[rangeArray.length - 1].setEndAfter(rendered.lastChild);
 				}
 			}
 
