@@ -1,3 +1,5 @@
+import { FINDING_OVERFLOW_CLASS } from "../chunker/layout";
+
 export default `
 :root {
 	--pagedjs-width: 8.5in;
@@ -659,7 +661,7 @@ export default `
 	text-align-last: justify;
 }
 
-.process-find-overflow table:last-child td {
+.${FINDING_OVERFLOW_CLASS} table:last-child td {
 	vertical-align: top !important;
 }
 

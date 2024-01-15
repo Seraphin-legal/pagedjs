@@ -1,4 +1,4 @@
-import { getBoundingClientRect, getClientRects } from "../utils/utils.js";
+import { UUID, getBoundingClientRect, getClientRects } from "../utils/utils.js";
 import {
 	breakInsideAvoidParentNode,
 	child,
@@ -28,6 +28,9 @@ import BreakToken from "./breaktoken.js";
 import RenderResult, { OverflowContentError } from "./renderresult.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
+import { TABLE_BREAK_END_CLASS } from "../modules/paged-media/tables.js";
+
+export const FINDING_OVERFLOW_CLASS = "process-find-overflow";
 
 const MAX_CHARS_PER_BREAK = 1500;
 
@@ -95,8 +98,6 @@ class Layout {
 
 		this.hooks &&
 			this.hooks.onPageLayout.trigger(wrapper, prevBreakToken, this);
-		let currentCol =
-			start.tagName === "TD" ? start : parentOf(start, "TD", source);
 
 		while (!done && !newBreakToken) {
 			next = walker.next();
@@ -113,10 +114,6 @@ class Layout {
 				prevNode = node;
 				node = next.value;
 				done = next.done;
-				const col = parentOf(node, "TD", source);
-				if (col) {
-					currentCol = col;
-				}
 			}
 
 			if (!node) {
@@ -153,8 +150,6 @@ class Layout {
 				this.hooks &&
 					this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
 				return new RenderResult(newBreakToken);
-			} else if (node.tagName === "TD") {
-				currentCol = node;
 			}
 
 			this.hooks && this.hooks.layoutNode.trigger(node);
@@ -262,7 +257,13 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				if (this.hasOverflow(wrapper, bounds) && currentCol) {
+				const currentCol =
+					node.tagName === "TD" ? node : parentOf(node, "TD", source);
+				let overflow;
+				if (
+					currentCol &&
+					(overflow = this.findOverflow(wrapper, bounds, undefined, source))
+				) {
 					// add missing content in the current columns
 					let cellChildIdx = currentCol.firstChild;
 					while (cellChildIdx && !cellChildIdx.contains(node)) {
@@ -323,7 +324,12 @@ class Layout {
 							} else if (nextCell.dataset.renderEnded !== "true") {
 								// duplicate column
 								this.hooks && this.hooks.layoutNode.trigger(nextCell);
-								this.append(nextCell, wrapper, breakToken, nextCell.dataset.renderEnded === "true");
+								this.append(
+									nextCell,
+									wrapper,
+									breakToken,
+									nextCell.dataset.renderEnded === "true"
+								);
 							}
 						}
 						nextCell = nextCell.nextElementSibling;
@@ -780,6 +786,7 @@ class Layout {
 	}
 
 	hasOverflow(element, bounds = this.bounds) {
+		element.classList.add(FINDING_OVERFLOW_CLASS); // used to change table cell alignment
 		let constrainingElement = element && element.parentNode; // this gets the element, instead of the wrapper for the width workaround
 		let { width, height } =
 			element.childElementCount > 0
@@ -796,10 +803,11 @@ class Layout {
 		let scrollHeight = constrainingElement
 			? constrainingElement.scrollHeight
 			: 0;
-		return (
+		const res =
 			Math.max(Math.floor(width), scrollWidth) > Math.round(bounds.width) ||
-			Math.max(Math.floor(height), scrollHeight) > Math.round(bounds.height)
-		);
+			Math.max(Math.floor(height), scrollHeight) > Math.round(bounds.height);
+		element.classList.remove(FINDING_OVERFLOW_CLASS);
+		return res;
 	}
 
 	findOverflow(rendered, bounds = this.bounds, gap = this.gap, source) {
@@ -811,10 +819,9 @@ class Layout {
 		let vEnd = Math.round(bounds.bottom);
 		let range;
 		const rangeArray = [];
-		const PROCESS_CLASS = "process-find-overflow";
 
 		let walker = walk(rendered.firstChild, rendered);
-		rendered.classList.add(PROCESS_CLASS); // used to change table cell alignment
+		rendered.classList.add(FINDING_OVERFLOW_CLASS); // used to change table cell alignment
 
 		// Find Start
 		let next, done, node, offset, skip, breakAvoid, prev, br;
@@ -1035,7 +1042,7 @@ class Layout {
 			}
 		}
 
-		rendered.classList.remove(PROCESS_CLASS); // remove process class
+		rendered.classList.remove(FINDING_OVERFLOW_CLASS); // remove process class
 		// Find End
 		if (rangeArray.length > 0) {
 			rangeArray.forEach((range, index) => {
@@ -1063,23 +1070,25 @@ class Layout {
 
 					if (!col) {
 						const node = findElement(nodeIdx, source);
+						let endLimiter;
+
 						if (
-							!node.lastChild ||
-							!isText(node.lastChild) ||
-							node.lastChild.textContent.trim() !== ""
+							node.lastChild.nodeType !== document.ELEMENT_NODE ||
+							!node.lastChild.classList.contains(TABLE_BREAK_END_CLASS)
 						) {
-							const text = document.createTextNode("\u200B");
-							node.appendChild(text);
-							const textDest = document.createTextNode("\u200B");
-							nodeIdx.appendChild(textDest);
+							endLimiter = document.createElement("span");
+							endLimiter.classList.add(TABLE_BREAK_END_CLASS);
+							const uuid = UUID();
+							endLimiter.setAttribute("data-ref", uuid);
+							node.appendChild(endLimiter);
+						} else {
+							endLimiter = node.lastChild;
 						}
+						nodeIdx.appendChild(endLimiter.cloneNode(true));
 						// create range at the end of the cell
 						range = document.createRange();
-						range.setStartBefore(nodeIdx.lastChild);
-						range.setEndAfter(nodeIdx.lastChild);
+						range.selectNode(nodeIdx.lastChild);
 						rangeArray.push(range);
-						node.setAttribute("data-render-ended", "true");
-						nodeIdx.setAttribute("data-render-ended", "true");
 					}
 					nodeIdx = nodeIdx.nextElementSibling;
 				}

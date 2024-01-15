@@ -1,5 +1,8 @@
 import Handler from "../handler.js";
 
+export const TABLE_BREAK_END_CLASS = "break-end-token";
+export const ADDED_CELL_CLASS = "added-cell";
+
 class Tables extends Handler {
 	constructor(chunker, polisher, caller) {
 		super(chunker, polisher, caller);
@@ -13,11 +16,17 @@ class Tables extends Handler {
 	}
 
 	afterPageLayout(pageElement, page, breakToken) {
-		const addedCells = [...page.area.querySelectorAll("td.added")];
+		// remove added break end elements
+		const breaksEnd = [...page.area.querySelectorAll(`.${TABLE_BREAK_END_CLASS}`)];
+		for (const breakEnd of breaksEnd) {
+			breakEnd.remove();
+		}
+
+		const addedCells = [...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`)];
 		// check and remove duplicated cell
 		for (const cell of addedCells) {
 			const existingCell = page.area.querySelector(
-				`td[data-ref="${cell.dataset.ref}"]:not(.added)`
+				`td[data-ref="${cell.dataset.ref}"]:not(.${ADDED_CELL_CLASS})`
 			);
 			if (existingCell) {
 				cell.remove();
@@ -46,11 +55,9 @@ class Tables extends Handler {
 
 					if (
 						lastPreviousPageRow &&
-						(currentRows = mainContainer.querySelectorAll("tbody tr")) &&
-						(currentRows[1]?.dataset.ref === lastPreviousPageRow.dataset.ref ||
-							(currentRows[0]?.dataset.ref ===
-								lastPreviousPageRow.dataset.ref &&
-								!lastPreviousPageRow.querySelector("td:not(:empty)")))
+						(currentRows = mainContainer.querySelectorAll("tbody tr")) && //currentRows[1]?.dataset.ref === lastPreviousPageRow.dataset.ref ||
+						currentRows[0]?.dataset.ref === lastPreviousPageRow.dataset.ref &&
+						!lastPreviousPageRow.querySelector("td:not(:empty)")
 					) {
 						// remove last row from previous page as it is overflowing and duplicated
 						const previousTBody = lastPreviousPageRow.parentNode;

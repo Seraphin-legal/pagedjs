@@ -5,6 +5,7 @@ import Hook from "../utils/hook.js";
 import Queue from "../utils/queue.js";
 import { requestIdleCallback } from "../utils/utils.js";
 import { OverflowContentError } from "./renderresult.js";
+import { TABLE_BREAK_END_CLASS } from "../modules/paged-media/tables.js";
 
 const MAX_PAGES = false;
 const MAX_LAYOUTS = false;
@@ -285,23 +286,25 @@ class Chunker {
 			return;
 		}
 
-		[...(Array.isArray(nodeBreak) ? nodeBreak : [nodeBreak])].forEach((node) => {
-			if (
-				node &&
-				typeof node.dataset !== "undefined" &&
-				typeof node.dataset.previousBreakAfter !== "undefined"
-			) {
-				previousBreakAfter = node.dataset.previousBreakAfter;
+		[...(Array.isArray(nodeBreak) ? nodeBreak : [nodeBreak])].forEach(
+			(node) => {
+				if (
+					node &&
+					typeof node.dataset !== "undefined" &&
+					typeof node.dataset.previousBreakAfter !== "undefined"
+				) {
+					previousBreakAfter = node.dataset.previousBreakAfter;
+				}
+
+				if (
+					node &&
+					typeof node.dataset !== "undefined" &&
+					typeof node.dataset.breakBefore !== "undefined"
+				) {
+					breakBefore = node.dataset.breakBefore;
+				}
 			}
-	
-			if (
-				node &&
-				typeof node.dataset !== "undefined" &&
-				typeof node.dataset.breakBefore !== "undefined"
-			) {
-				breakBefore = node.dataset.breakBefore;
-			}
-		});
+		);
 
 		if (force) {
 			page = this.addPage(true);
@@ -394,15 +397,18 @@ class Chunker {
 					: [breakToken];
 				breakTokenArray.forEach((bToken) => {
 					let newToken = bToken.toJSON(true);
-					if (tokens.lastIndexOf(newToken) > -1) {
+					if (tokens.lastIndexOf(newToken) === -1) {
+						tokens.push(newToken);
+					} else if (
+						bToken.node.nodeType !== document.ELEMENT_NODE ||
+						!bToken.node.classList.contains(TABLE_BREAK_END_CLASS)
+					) {
 						// loop
 						let err = new OverflowContentError("Layout repeated", [
 							bToken.node,
 						]);
 						console.error("Layout repeated at: ", bToken.node);
 						return err;
-					} else {
-						tokens.push(newToken);
 					}
 				});
 			}

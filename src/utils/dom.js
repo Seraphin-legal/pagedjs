@@ -1,3 +1,5 @@
+import { ADDED_CELL_CLASS } from "../modules/paged-media/tables";
+
 export function isElement(node) {
 	return node && node.nodeType === 1;
 }
@@ -312,7 +314,7 @@ export function rebuildAncestors(node) {
 					}
 					// insert cell
 					const newCell = cell.node.cloneNode(false);
-					newCell.classList.add("added");
+					newCell.classList.add(ADDED_CELL_CLASS);
 					newCell.innerHTML = ""; // empty the cell
 					const newCellYEnd = parseInt(newCell.dataset.yEnd, 10);
 					newCell.setAttribute("rowspan", newCellYEnd - currentY + 1);
