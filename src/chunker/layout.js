@@ -17,18 +17,24 @@ import {
 	nodeAfter,
 	nodeBefore,
 	parentOf,
-	parentRowWithNextSiblingContent,
+	nextCellSiblingWithContent,
 	prevValidNode,
 	rebuildAncestors,
 	validNode,
 	walk,
 	words,
+	getAllNextTableCells,
+	isFirstChild,
+	isLastTableCell,
 } from "../utils/dom.js";
 import BreakToken from "./breaktoken.js";
 import RenderResult, { OverflowContentError } from "./renderresult.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
-import { TABLE_BREAK_END_CLASS } from "../modules/paged-media/tables.js";
+import {
+	EMPTY_CELL_CLASS,
+	TABLE_BREAK_END_CLASS,
+} from "../modules/paged-media/tables.js";
 
 export const FINDING_OVERFLOW_CLASS = "process-find-overflow";
 
@@ -827,6 +833,7 @@ class Layout {
 		let next, done, node, offset, skip, breakAvoid, prev, br;
 		let skipChildren;
 		let insideTableCell;
+		let nextCellWithContent;
 		while (!done) {
 			next = walker.next();
 			done = next.done;
@@ -924,7 +931,11 @@ class Layout {
 					range.selectNode(prev);
 					if (
 						insideTableCell &&
-						((this.isNodeInTableWithSiblingWithContent(prev, source) &&
+						(((nextCellWithContent = this.cellSiblingWithContent(
+							prev,
+							rendered,
+							source
+						)) &&
 							rangeArray.push(range)) ||
 							(rangeArray.length > 0 && rangeArray.push(range) && false))
 					) {
@@ -940,7 +951,11 @@ class Layout {
 					range.selectNode(node);
 					if (
 						insideTableCell &&
-						((this.isNodeInTableWithSiblingWithContent(node, source) &&
+						(((nextCellWithContent = this.cellSiblingWithContent(
+							node,
+							rendered,
+							source
+						)) &&
 							rangeArray.push(range)) ||
 							(rangeArray.length > 0 && rangeArray.push(range) && false))
 					) {
@@ -956,7 +971,11 @@ class Layout {
 					range.selectNode(node);
 					if (
 						insideTableCell &&
-						((this.isNodeInTableWithSiblingWithContent(node, source) &&
+						(((nextCellWithContent = this.cellSiblingWithContent(
+							node,
+							rendered,
+							source
+						)) &&
 							rangeArray.push(range)) ||
 							(rangeArray.length > 0 && rangeArray.push(range) && false))
 					) {
@@ -977,18 +996,26 @@ class Layout {
 				let rects = getClientRects(node);
 				let rect;
 				left = 0;
+				right = 0;
 				top = 0;
+				bottom = 0;
 				for (var i = 0; i != rects.length; i++) {
 					rect = rects[i];
 					if (rect.width > 0 && (!left || rect.left > left)) {
 						left = rect.left;
 					}
+					if (rect.width > 0 && (!right || rect.right > right)) {
+						right = rect.right;
+					}
 					if (rect.height > 0 && (!top || rect.top > top)) {
 						top = rect.top;
 					}
+					if (rect.height > 0 && (!bottom || rect.bottom > bottom)) {
+						bottom = rect.bottom;
+					}
 				}
 
-				if (left >= end || top >= vEnd) {
+				if (left >= end || right >= vEnd || top >= vEnd || bottom >= vEnd) {
 					let parentAvoidBreak = breakInsideAvoidParentNode(node.parentNode);
 
 					range = document.createRange();
@@ -1017,7 +1044,11 @@ class Layout {
 					if (
 						!parentAvoidBreak &&
 						insideTableCell &&
-						((this.isNodeInTableWithSiblingWithContent(node, source) &&
+						(((nextCellWithContent = this.cellSiblingWithContent(
+							node,
+							rendered,
+							source
+						)) &&
 							rangeArray.push(range)) ||
 							(rangeArray.length > 0 && rangeArray.push(range) && false))
 					) {
@@ -1037,7 +1068,7 @@ class Layout {
 						walker = walk(next, rendered);
 					}
 				} else {
-					walker = walk(insideTableCell.nextElementSibling, rendered);
+					walker = walk(nextCellWithContent, rendered);
 				}
 			}
 		}
@@ -1045,58 +1076,76 @@ class Layout {
 		rendered.classList.remove(FINDING_OVERFLOW_CLASS); // remove process class
 		// Find End
 		if (rangeArray.length > 0) {
+			const otherCellsInTable = getAllNextTableCells(
+				rangeArray[0].startContainer,
+				rendered
+			);
+
+			// add break the other cells that are not detected as overflowing to know that they are already ended
+			for (let idx = 0; idx < otherCellsInTable.length; ++idx) {
+				const tableCell = otherCellsInTable[idx];
+				const col = rangeArray.find(
+					(r) =>
+						(r.startContainer.tagName === "TD"
+							? r.startContainer
+							: parentOf(r.startContainer, "TD", rendered)) === tableCell
+				);
+
+				if (!col) {
+					const node = findElement(tableCell, source);
+					let endLimiter;
+
+					if (
+						node.lastChild.nodeType !== document.ELEMENT_NODE ||
+						!node.lastChild.classList.contains(TABLE_BREAK_END_CLASS)
+					) {
+						endLimiter = document.createElement("span");
+						endLimiter.classList.add(TABLE_BREAK_END_CLASS);
+						const uuid = UUID();
+						endLimiter.setAttribute("data-ref", uuid);
+						node.appendChild(endLimiter);
+					} else {
+						endLimiter = node.lastChild;
+					}
+					tableCell.appendChild(endLimiter.cloneNode(true));
+					// create range at the end of the cell
+					range = document.createRange();
+					range.selectNode(tableCell.lastChild);
+					rangeArray.splice(idx + 1, 0, range);
+				}
+			}
+
 			rangeArray.forEach((range, index) => {
 				const parentCell =
 					range.startContainer.tagName === "TD"
 						? range.startContainer
 						: parentOf(range.startContainer, "TD", rendered);
+				// select first child of table if current selection is on an element that is at the beginning of the cell
+				if (
+					range.startContainer.tagName !== "TD" &&
+					range.startOffset === 0 &&
+					isFirstChild(range.startContainer, parentCell)
+				) {
+					range.setStartBefore(parentCell.firstChild);
+					parentCell.classList.add(EMPTY_CELL_CLASS);
+				}
+
 				range.setEndAfter(parentCell.lastChild);
-			});
-			// add break the other cells that are not detected as overflowing to know that they are already ended
-			const firstOverflowingCell =
-				rangeArray[0].startContainer.tagName === "TD"
-					? rangeArray[0].startContainer
-					: parentOf(rangeArray[0].startContainer, "TD", rendered);
-			if (firstOverflowingCell && firstOverflowingCell.nextElementSibling) {
-				let nodeIdx = firstOverflowingCell.nextElementSibling;
+				if (isLastTableCell(parentCell)) {
+					let cellIdx = parentCell;
 
-				while (nodeIdx) {
-					const col = rangeArray.find(
-						(r) =>
-							(r.startContainer.tagName === "TD"
-								? r.startContainer
-								: parentOf(r.startContainer, "TD", rendered)) === nodeIdx
-					);
-
-					if (!col) {
-						const node = findElement(nodeIdx, source);
-						let endLimiter;
-
-						if (
-							node.lastChild.nodeType !== document.ELEMENT_NODE ||
-							!node.lastChild.classList.contains(TABLE_BREAK_END_CLASS)
-						) {
-							endLimiter = document.createElement("span");
-							endLimiter.classList.add(TABLE_BREAK_END_CLASS);
-							const uuid = UUID();
-							endLimiter.setAttribute("data-ref", uuid);
-							node.appendChild(endLimiter);
-						} else {
-							endLimiter = node.lastChild;
+					while (cellIdx && isLastTableCell(cellIdx)) {
+						let parentCellIdx = parentOf(cellIdx, "TD", rendered);
+						if (parentCellIdx) {
+							range.setEndAfter(parentCellIdx.lastChild);
 						}
-						nodeIdx.appendChild(endLimiter.cloneNode(true));
-						// create range at the end of the cell
-						range = document.createRange();
-						range.selectNode(nodeIdx.lastChild);
-						rangeArray.push(range);
+						cellIdx = parentCellIdx;
 					}
-					nodeIdx = nodeIdx.nextElementSibling;
 				}
-				if (firstOverflowingCell.parentNode.nextSibling) {
-					// set selection to the end for the last range
-					rangeArray[rangeArray.length - 1].setEndAfter(rendered.lastChild);
-				}
-			}
+			});
+
+			// set selection to the end for the last range
+			rangeArray[rangeArray.length - 1].setEndAfter(rendered.lastChild);
 
 			return rangeArray.length === 1 ? rangeArray[0] : rangeArray;
 		} else if (range) {
@@ -1105,16 +1154,19 @@ class Layout {
 		}
 	}
 
-	isNodeInTableWithSiblingWithContent(node, source) {
+	cellSiblingWithContent(node, nodeWrapper, treeSource) {
 		if (isText(node)) {
 			node = node.parentNode;
 		}
-		const sourceNode = findElement(node, source);
-		const parentRowWithContent = parentRowWithNextSiblingContent(
+		const sourceNode = findElement(node, treeSource);
+		const nextCellWithContent = nextCellSiblingWithContent(
 			sourceNode,
-			source
+			treeSource
 		);
-		return !!parentRowWithContent;
+		if (nextCellWithContent) {
+			return findElement(nextCellWithContent, nodeWrapper);
+		}
+		return null;
 	}
 
 	findEndToken(rendered, source) {
@@ -1221,6 +1273,10 @@ class Layout {
 			}
 		}
 
+		if (offset > 0 && node.nodeValue.substring(0, offset).trim() === "") {
+			// select start of the text with the whitespaces if the offset is at the start of the text
+			return 0;
+		}
 		return offset;
 	}
 

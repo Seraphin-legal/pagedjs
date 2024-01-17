@@ -2,6 +2,9 @@ import Handler from "../handler.js";
 
 export const TABLE_BREAK_END_CLASS = "break-end-token";
 export const ADDED_CELL_CLASS = "added-cell";
+export const EMPTY_CELL_CLASS = "empty-cell";
+
+export const DomElementsWithSize = ["img","table","br","wbr","hr"];
 
 class Tables extends Handler {
 	constructor(chunker, polisher, caller) {
@@ -16,13 +19,26 @@ class Tables extends Handler {
 	}
 
 	afterPageLayout(pageElement, page, breakToken) {
-		// remove added break end elements
-		const breaksEnd = [...page.area.querySelectorAll(`.${TABLE_BREAK_END_CLASS}`)];
-		for (const breakEnd of breaksEnd) {
-			breakEnd.remove();
+		// remove added break end elements and empty cells
+		const elemsToRemove = [
+			...page.area.querySelectorAll(`.${TABLE_BREAK_END_CLASS}`)
+		];
+		for (const toRemove of elemsToRemove) {
+			toRemove.remove();
 		}
 
-		const addedCells = [...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`)];
+		const cellsToRemove = [...page.area.querySelectorAll(`td.${EMPTY_CELL_CLASS}`)];
+		for (const toRemove of cellsToRemove) {
+			const parent = toRemove.parentNode;
+			toRemove.remove();
+			if (parent.childElementCount === 0) {
+				parent.remove();
+			}
+		}
+
+		const addedCells = [
+			...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`),
+		];
 		// check and remove duplicated cell
 		for (const cell of addedCells) {
 			const existingCell = page.area.querySelector(
@@ -57,7 +73,7 @@ class Tables extends Handler {
 						lastPreviousPageRow &&
 						(currentRows = mainContainer.querySelectorAll("tbody tr")) && //currentRows[1]?.dataset.ref === lastPreviousPageRow.dataset.ref ||
 						currentRows[0]?.dataset.ref === lastPreviousPageRow.dataset.ref &&
-						!lastPreviousPageRow.querySelector("td:not(:empty)")
+						this.isTableRowEmpty(lastPreviousPageRow)
 					) {
 						// remove last row from previous page as it is overflowing and duplicated
 						const previousTBody = lastPreviousPageRow.parentNode;
@@ -85,6 +101,36 @@ class Tables extends Handler {
 				page.area.style.columnWidth = "auto"; // show the content that slicely "overflowing"
 			}
 		}
+	}
+
+	isTableCellEmpty(cell) {
+		const cellContent = cell.textContent.trim();
+
+		// Check if the cell contains only whitespace or is empty
+		if (cellContent !== "" && cellContent !== "\u00A0") {
+			return false;
+		}
+
+		const elementWithSize = cell.querySelector(DomElementsWithSize.join(","));
+		if (elementWithSize) {
+			return false;
+		}
+
+		for (let idx; idx < cell.childNodes.length; ++idx) {
+			if (cell.childNodes[idx].offsetHeight > 0) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	isTableRowEmpty(row) {
+		for (let idx = 0; idx < row.childNodes.length; ++idx) {
+			if (!this.isTableCellEmpty(row.childNodes[idx])) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	setTableCellsSizeData(table) {

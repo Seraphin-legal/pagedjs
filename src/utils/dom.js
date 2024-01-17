@@ -1,4 +1,4 @@
-import { ADDED_CELL_CLASS } from "../modules/paged-media/tables";
+import { ADDED_CELL_CLASS, DomElementsWithSize } from "../modules/paged-media/tables";
 
 export function isElement(node) {
 	return node && node.nodeType === 1;
@@ -522,6 +522,20 @@ export function* letters(wordRange) {
 	}
 }
 
+export function isFirstChild(node, limiter) {
+	let nodeIdx = node;
+	while (nodeIdx && nodeIdx !== limiter) {
+		if (nodeIdx.previousSibling) return false;
+		nodeIdx = nodeIdx.parentElement;
+	}
+	return true;
+}
+
+export function isLastTableCell(node, limiter) {
+	const cell = node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
+	return cell && !cell.nextSibling;
+}
+
 export function isContainer(node) {
 	let container;
 
@@ -811,7 +825,7 @@ export function breakInsideAvoidParentNode(node) {
 	return null;
 }
 
-export function parentRowWithNextSiblingContent(node, limiter) {
+export function nextCellSiblingWithContent(node, limiter) {
 	const parentCell = parentOf(node, "TD", limiter);
 
 	if (!parentCell) {
@@ -819,16 +833,42 @@ export function parentRowWithNextSiblingContent(node, limiter) {
 	}
 	let hasContentSibling = false;
 	let nodeIdx = parentCell.nextElementSibling;
+	let prevNodeIdx;
 	while (!hasContentSibling && nodeIdx) {
-		if (nodeIdx.textContent.trim() !== "" || nodeIdx.querySelector("img")) {
+		if (nodeIdx.textContent.trim() !== "" || nodeIdx.querySelector(DomElementsWithSize.join(","))) {
 			hasContentSibling = true;
 		}
+		prevNodeIdx = nodeIdx;
 		nodeIdx = nodeIdx.nextElementSibling;
 	}
 	if (hasContentSibling) {
-		return parentOf(node, "TR", limiter);
+		return prevNodeIdx;
+	} else {
+		// check if the current table is inside another table
+		const parentTable = parentOf(parentCell, "TABLE", limiter);
+		if (!parentTable) return null;
+		return nextCellSiblingWithContent(parentTable, limiter);
 	}
-	return null;
+}
+
+export function getAllNextTableCells(node, limiter) {
+	const getNextCells = (node, limiter) => {
+		const cell = node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
+		const otherCells = [];
+
+		if (!cell) return otherCells;
+
+		let nodeIdx = cell.nextElementSibling;
+
+		while (nodeIdx) {
+			otherCells.push(nodeIdx);
+			nodeIdx = nodeIdx.nextElementSibling;
+		}
+
+		const table = parentOf(cell, "TABLE", limiter);
+		return [...otherCells, ...(table ? getAllNextTableCells(table, limiter) : [])];
+	};
+	return getNextCells(node, limiter);
 }
 
 /**
