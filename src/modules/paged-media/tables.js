@@ -4,7 +4,7 @@ export const TABLE_BREAK_END_CLASS = "break-end-token";
 export const ADDED_CELL_CLASS = "added-cell";
 export const EMPTY_CELL_CLASS = "empty-cell";
 
-export const DomElementsWithSize = ["img","table","br","wbr","hr"];
+export const DomElementsWithSize = ["img", "table", "br", "wbr", "hr"];
 
 class Tables extends Handler {
 	constructor(chunker, polisher, caller) {
@@ -21,13 +21,15 @@ class Tables extends Handler {
 	afterPageLayout(pageElement, page, breakToken) {
 		// remove added break end elements and empty cells
 		const elemsToRemove = [
-			...page.area.querySelectorAll(`.${TABLE_BREAK_END_CLASS}`)
+			...page.area.querySelectorAll(`.${TABLE_BREAK_END_CLASS}`),
 		];
 		for (const toRemove of elemsToRemove) {
 			toRemove.remove();
 		}
 
-		const cellsToRemove = [...page.area.querySelectorAll(`td.${EMPTY_CELL_CLASS}`)];
+		const cellsToRemove = [
+			...page.area.querySelectorAll(`td.${EMPTY_CELL_CLASS}`),
+		];
 		for (const toRemove of cellsToRemove) {
 			const parent = toRemove.parentNode;
 			toRemove.remove();
@@ -98,7 +100,7 @@ class Tables extends Handler {
 			);
 
 			if (lastElementTable) {
-				page.area.style.columnWidth = "auto"; // show the content that slicely "overflowing"
+				page.area.style.columnWidth = "auto"; // show the table even if it is overflowing
 			}
 		}
 	}
@@ -138,7 +140,15 @@ class Tables extends Handler {
 		const rows = [...table.querySelectorAll(":scope > tbody > tr")];
 		const maxCells = Math.max(
 			...(rows.length > 0
-				? rows.map((row) => row.querySelectorAll(":scope > td").length || 0)
+				? rows.map((row) =>
+					[...row.querySelectorAll(":scope > td")]
+						.map((td) =>
+							td.hasAttribute("colspan")
+								? parseInt(td.getAttribute("colspan") ?? 1, 10)
+								: 1
+						)
+						.reduce((sum, nb) => sum + nb, 0)
+				)
 				: [0])
 		);
 		const mapPosData =
@@ -149,7 +159,7 @@ class Tables extends Handler {
 		for (let rowIdx = 0; rowIdx < rows.length; ++rowIdx) {
 			const row = rows[rowIdx];
 			const cols = row.querySelectorAll(":scope > td");
-			if (!cols) continue;
+			if (cols.length === 0) continue;
 
 			for (let colIdx = 0; colIdx < cols.length; ++colIdx) {
 				const posDataIdx = mapPosData[rowIdx]?.findIndex(

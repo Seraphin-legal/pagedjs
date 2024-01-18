@@ -489,20 +489,20 @@ class Layout {
 					parent.appendChild(clone);
 				}
 
-				let cloneIdx = fragment.childNodes[0];
-				let destIdx = dest,
-					prevDestIdx = dest;
-				while (
-					cloneIdx &&
-					cloneIdx.nodeType === document.ELEMENT_NODE &&
-					(destIdx = dest.querySelector(`[data-ref="${cloneIdx.dataset.ref}"]`))
-				) {
-					prevDestIdx = destIdx;
-					cloneIdx = cloneIdx.lastChild;
+				let cloneIdx = clone;
+				let destIdx;
+
+				while (cloneIdx && cloneIdx.parentNode && 
+					cloneIdx.parentNode.nodeType === document.ELEMENT_NODE &&
+					!(destIdx = dest.querySelector(`[data-ref="${cloneIdx.parentNode.dataset.ref}"]`))) {
+					cloneIdx = cloneIdx.parentNode;
 				}
-				if (cloneIdx && prevDestIdx) {
-					prevDestIdx.appendChild(cloneIdx);
+
+				if (destIdx && cloneIdx) {
+					// append found element inside the correct parent
+					destIdx.appendChild(cloneIdx);
 				} else {
+					// append the whole fragment as there isn't any parent in common
 					dest.appendChild(fragment);
 				}
 			} else {
@@ -1015,7 +1015,7 @@ class Layout {
 					}
 				}
 
-				if (left >= end || right >= vEnd || top >= vEnd || bottom >= vEnd) {
+				if (left >= end || right >= end || top >= vEnd || bottom >= vEnd) {
 					let parentAvoidBreak = breakInsideAvoidParentNode(node.parentNode);
 
 					range = document.createRange();
@@ -1095,7 +1095,7 @@ class Layout {
 					const node = findElement(tableCell, source);
 					let endLimiter;
 
-					if (
+					if (!node.lastChild ||
 						node.lastChild.nodeType !== document.ELEMENT_NODE ||
 						!node.lastChild.classList.contains(TABLE_BREAK_END_CLASS)
 					) {
@@ -1120,6 +1120,9 @@ class Layout {
 					range.startContainer.tagName === "TD"
 						? range.startContainer
 						: parentOf(range.startContainer, "TD", rendered);
+
+				if (!parentCell) return;
+
 				// select first child of table if current selection is on an element that is at the beginning of the cell
 				if (
 					range.startContainer.tagName !== "TD" &&
