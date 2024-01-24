@@ -151,7 +151,7 @@ class Layout {
 					);
 				}
 
-				this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+				// this.rebuildTableFromBreakToken(newBreakToken, wrapper);
 
 				this.hooks &&
 					this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
@@ -179,7 +179,7 @@ class Layout {
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
 				} else {
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					// this.rebuildTableFromBreakToken(newBreakToken, wrapper);
 				}
 
 				if (
@@ -245,7 +245,7 @@ class Layout {
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
 				} else {
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					// this.rebuildTableFromBreakToken(newBreakToken, wrapper);
 				}
 
 				length = 0;
@@ -268,7 +268,7 @@ class Layout {
 				let overflow;
 				if (
 					currentCol &&
-					(overflow = this.findOverflow(wrapper, bounds, undefined, source))
+					(overflow = this.findOverflow(wrapper, bounds, undefined, source)) // TODO optimize, replace findOverflow here by another function
 				) {
 					// add missing content in the current columns
 					let cellChildIdx = currentCol.firstChild;
@@ -313,28 +313,28 @@ class Layout {
 								let nextResume = resumeWalker.next(); // skip first element
 								let doneResume;
 
-								if (currentCell.dataset.renderEnded !== "true") {
-									do {
-										this.hooks && this.hooks.layoutNode.trigger(resumeNode);
-										this.append(resumeNode, wrapper, breakToken, true);
-										nextResume = resumeWalker.next();
-										resumeNode = nextResume.value;
-										doneResume = nextResume.done;
-									} while (
-										!doneResume &&
-										resumeNode &&
-										resumeNode.tagName !== "TD" &&
-										currentCell.contains(resumeNode)
-									);
-								}
-							} else if (nextCell.dataset.renderEnded !== "true") {
+								do {
+									this.hooks && this.hooks.layoutNode.trigger(resumeNode);
+									this.append(resumeNode, wrapper, breakToken, true);
+									nextResume = resumeWalker.next();
+									resumeNode = nextResume.value;
+									doneResume = nextResume.done;
+								} while (
+									!doneResume &&
+									resumeNode &&
+									resumeNode.tagName !== "TD" &&
+									currentCell.contains(resumeNode)
+								);
+							} else {
 								// duplicate column
 								this.hooks && this.hooks.layoutNode.trigger(nextCell);
 								this.append(
 									nextCell,
 									wrapper,
 									breakToken,
-									nextCell.dataset.renderEnded === "true"
+									nextCell?.lastElementChild?.classList?.contains(
+										TABLE_BREAK_END_CLASS
+									)
 								);
 							}
 						}
@@ -351,7 +351,7 @@ class Layout {
 
 				if (newBreakToken) {
 					length = 0;
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					// this.rebuildTableFromBreakToken(newBreakToken, wrapper);
 				}
 
 				if (
@@ -460,7 +460,10 @@ class Layout {
 							: breakToken[breakIndex].offset
 					);
 				}
-				if (!isText(node) && node.dataset.renderEnded === "true") {
+				if (
+					!isText(node) &&
+					node.lastElementChild?.classList?.contains(TABLE_BREAK_END_CLASS)
+				) {
 					clone.innerHTML = "";
 				}
 				parent.appendChild(clone);
@@ -492,9 +495,14 @@ class Layout {
 				let cloneIdx = clone;
 				let destIdx;
 
-				while (cloneIdx && cloneIdx.parentNode && 
+				while (
+					cloneIdx &&
+					cloneIdx.parentNode &&
 					cloneIdx.parentNode.nodeType === document.ELEMENT_NODE &&
-					!(destIdx = dest.querySelector(`[data-ref="${cloneIdx.parentNode.dataset.ref}"]`))) {
+					!(destIdx = dest.querySelector(
+						`[data-ref="${cloneIdx.parentNode.dataset.ref}"]`
+					))
+				) {
 					cloneIdx = cloneIdx.parentNode;
 				}
 
@@ -529,29 +537,30 @@ class Layout {
 		return clone;
 	}
 
-	rebuildTableFromBreakToken(breakTokens, dest) {
-		if (!breakTokens || (!Array.isArray(breakTokens) && !breakTokens.node)) {
-			return;
-		}
-		const tokens = Array.isArray(breakTokens) ? breakTokens : [breakTokens];
-		tokens.forEach((breakToken) => {
-			let node = breakToken.node;
-			let td = isElement(node)
-				? node.closest("td")
-				: node.parentElement?.closest("td");
-			if (td) {
-				let rendered = findElement(td, dest, true);
-				if (!rendered) {
-					return;
-				}
-				while ((td = td.nextElementSibling)) {
-					if (!dest.querySelector(`[data-ref="${td.dataset.ref}"]`)) {
-						this.append(td, dest, null, true);
-					}
-				}
-			}
-		});
-	}
+	// rebuildTableFromBreakToken(breakTokens, dest) {
+	// 	if (!breakTokens || (!Array.isArray(breakTokens) && !breakTokens.node)) {
+	// 		return;
+	// 	}
+	// 	const tokens = Array.isArray(breakTokens) ? breakTokens : [breakTokens];
+	// 	tokens.forEach((breakToken) => {
+	// 		let node = breakToken.node;
+	// 		let td = isElement(node)
+	// 			? node.closest("td")
+	// 			: node.parentElement?.closest("td");
+	// 		if (td) {
+	// 			let rendered = findElement(td, dest, true);
+	// 			if (!rendered) {
+	// 				return;
+	// 			}
+	// 			// TODO check rowspan
+	// 			while ((td = td.nextElementSibling)) {
+	// 				if (!dest.querySelector(`[data-ref="${td.dataset.ref}"]`)) {
+	// 					this.append(td, dest, null, true);
+	// 				}
+	// 			}
+	// 		}
+	// 	});
+	// }
 
 	async waitForImages(imgs) {
 		let results = Array.from(imgs).map(async (img) => {
@@ -1060,8 +1069,23 @@ class Layout {
 				}
 			}
 
+			const isTableRowWithLongCell =
+				node.tagName === "TR"
+					? [
+							...node.querySelectorAll(
+								":scope > td[rowspan]:not([rowspan=\"1\"])"
+							),
+					  ].some(
+							(cell) => Math.round(getBoundingClientRect(cell).bottom) >= vEnd
+					  )
+					: false;
+
 			// Skip children
-			if (skip || skipChildren || (right <= end && bottom <= vEnd)) {
+			if (
+				skip ||
+				skipChildren ||
+				(right <= end && bottom <= vEnd && !isTableRowWithLongCell)
+			) {
 				if (!skipChildren) {
 					next = nodeAfter(node, rendered);
 					if (next) {
@@ -1095,7 +1119,8 @@ class Layout {
 					const node = findElement(tableCell, source);
 					let endLimiter;
 
-					if (!node.lastChild ||
+					if (
+						!node.lastChild ||
 						node.lastChild.nodeType !== document.ELEMENT_NODE ||
 						!node.lastChild.classList.contains(TABLE_BREAK_END_CLASS)
 					) {

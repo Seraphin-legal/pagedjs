@@ -56,7 +56,6 @@ class Tables extends Handler {
 				pageElement.previousElementSibling?.querySelector(
 					".pagedjs_area > .pagedjs_page_content > div main"
 				);
-
 			if (previousPageMainContainer) {
 				const previousPageLastElementTable =
 					previousPageMainContainer.querySelector(
@@ -67,27 +66,35 @@ class Tables extends Handler {
 					);
 
 				if (previousPageLastElementTable) {
-					const lastPreviousPageRow =
-						previousPageLastElementTable.querySelector("tbody tr:last-child");
-					let currentRows;
+					const allLastPreviousPageRow = [
+						...previousPageLastElementTable.querySelectorAll(
+							"tbody tr:last-child"
+						),
+					];
 
-					if (
-						lastPreviousPageRow &&
-						(currentRows = mainContainer.querySelectorAll("tbody tr")) && //currentRows[1]?.dataset.ref === lastPreviousPageRow.dataset.ref ||
-						currentRows[0]?.dataset.ref === lastPreviousPageRow.dataset.ref &&
-						this.isTableRowEmpty(lastPreviousPageRow)
-					) {
-						// remove last row from previous page as it is overflowing and duplicated
-						const previousTBody = lastPreviousPageRow.parentNode;
-						lastPreviousPageRow.remove();
-						if (previousTBody.childNodes.length === 0) {
-							previousPageLastElementTable.remove();
+					for (const lastPreviousPageRow of allLastPreviousPageRow) {
+						const currentRow = mainContainer.querySelector(`tbody tr[data-ref="${lastPreviousPageRow.dataset.ref}"]`);
+
+						if (
+							currentRow &&
+							this.isTableRowEmpty(lastPreviousPageRow)
+						) {
+							// remove last row from previous page as it is duplicated
+							const previousTBody = lastPreviousPageRow.parentNode;
+							lastPreviousPageRow.remove();
+							if (previousTBody.childNodes.length === 0) {
+								previousPageLastElementTable.remove();
+							}
 						}
-					} else if (
-						mainContainer.querySelectorAll("table")[1]?.dataset.ref ===
-						previousPageLastElementTable.dataset.ref
-					) {
-						previousPageLastElementTable.remove();
+						 else if (currentRow && currentRow.childElementCount === 1 && currentRow.querySelector('td:empty')) {
+							currentRow.firstElementChild.style.backgroundColor = "pink";
+						}
+						// else if (
+						// 	mainContainer.querySelectorAll("table")[1]?.dataset.ref ===
+						// 	previousPageLastElementTable.dataset.ref
+						// ) {
+						// 	previousPageLastElementTable.remove();
+						// }
 					}
 				}
 			}
@@ -98,7 +105,6 @@ class Tables extends Handler {
 				:scope > div:last-child > table,\
 				:scope > table:last-child"
 			);
-
 			if (lastElementTable) {
 				page.area.style.columnWidth = "auto"; // show the table even if it is overflowing
 			}

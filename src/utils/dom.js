@@ -1,4 +1,7 @@
-import { ADDED_CELL_CLASS, DomElementsWithSize } from "../modules/paged-media/tables";
+import {
+	ADDED_CELL_CLASS,
+	DomElementsWithSize,
+} from "../modules/paged-media/tables";
 
 export function isElement(node) {
 	return node && node.nodeType === 1;
@@ -214,124 +217,131 @@ export function rebuildAncestors(node) {
 
 		// rebuild table rows
 		if (parent.nodeName === "TD" && ancestor.parentElement.contains(ancestor)) {
-			let td = ancestor;
-			let prev = parent;
-			const ancestorTBody = parentOf(ancestor, "TBODY");
-			const ancestorTable = parentOf(ancestorTBody, "TABLE");
-			const ancestorColGroup = ancestorTable.querySelector("COLGROUP");
-			if (ancestorColGroup) {
-				// add or replace colgroup
-				const currentTable = parentOf(parent, "TABLE");
-				const currentColGroup = currentTable.querySelector("COLGROUP");
-				currentColGroup?.remove();
-				const newColGroup = ancestorColGroup.cloneNode(true);
-				currentTable.insertBefore(newColGroup, currentTable.firstElementChild);
-			}
-
-			const currentY = Math.max(
-				...[...parent.parentNode.children].map((td) =>
-					parseInt(td.dataset.yStart)
-				)
-			);
-			const hasRowSpan = [...ancestorTBody.querySelectorAll("[rowspan]")].some(
-				(td) => td.rowSpan > 1
-			);
-			const dataCellsSize = hasRowSpan
-				? [...ancestor.parentNode.parentNode.children]
-					.map((tr) =>
-						[...tr.children].map((td) => ({
-							node: td,
-							xStart: parseInt(td.dataset.xStart),
-							xEnd: parseInt(td.dataset.xEnd),
-							yStart: parseInt(td.dataset.yStart),
-							yEnd: parseInt(td.dataset.yEnd),
-						}))
-					)
-					.flat(1)
-				: [];
-			while ((td = td.previousElementSibling)) {
-				let sib = td.cloneNode(false);
-				parent.parentElement.insertBefore(sib, prev);
-				prev = sib;
-			}
-
-			const xMax = Math.max(...dataCellsSize.map((d) => d.xEnd));
-			const xSum = Array.from(
-				{ length: xMax + 1 },
-				(_, index) => 1 + index
-			).reduce((partialSum, a) => partialSum + a, 0);
-			const currentRowData = hasRowSpan
-				? [...parent.parentNode.children].map((td) => ({
-					xStart: parseInt(td.dataset.xStart),
-					xEnd: parseInt(td.dataset.xEnd),
-				}))
-				: [];
-			const rowXSum = currentRowData
-				.map((c) =>
-					Array.from(
-						{ length: c.xEnd - c.xStart + 1 },
-						(_, index) => c.xStart + index + 1
-					)
-				)
-				.flat(1)
-				.reduce((partialSum, a) => partialSum + a, 0);
-			const needFillMissingCells = hasRowSpan && rowXSum !== xSum;
-			if (needFillMissingCells) {
-				// create missing columns with [rowspan]
-				let currentCol = parent.parentNode.firstElementChild;
-				for (let idx = 0; idx <= xMax; ++idx) {
-					const currentColXStart = parseInt(currentCol.dataset.xStart, 10);
-					let append = false;
-
-					if (
-						currentColXStart <= idx &&
-						idx <= parseInt(currentCol.dataset.xEnd, 10)
-					)
-						continue;
-					if (idx > currentColXStart) {
-						if (currentCol.nextElementSibling) {
-							currentCol = currentCol.nextElementSibling;
-							if (
-								parseInt(currentCol.dataset.xStart, 10) <= idx &&
-								idx <= parseInt(currentCol.dataset.xEnd, 10)
-							)
-								continue;
-						} else {
-							append = true;
-						}
-					}
-
-					const cell = dataCellsSize.find(
-						(c) =>
-							c.xStart <= idx &&
-							idx <= c.xEnd &&
-							c.yStart <= currentY &&
-							currentY <= c.yEnd
-					);
-					if (!cell) {
-						console.warn("Cell not found", idx, currentY, dataCellsSize);
-						continue;
-					}
-					// insert cell
-					const newCell = cell.node.cloneNode(false);
-					newCell.classList.add(ADDED_CELL_CLASS);
-					newCell.innerHTML = ""; // empty the cell
-					const newCellYEnd = parseInt(newCell.dataset.yEnd, 10);
-					newCell.setAttribute("rowspan", newCellYEnd - currentY + 1);
-					if (!append) {
-						currentCol.parentNode.insertBefore(newCell, currentCol);
-					} else {
-						currentCol.parentNode.appendChild(newCell);
-						currentCol = newCell;
-					}
-				}
-			}
+			fillTableMissingRow(parent, ancestors[0], ancestor);
 		}
 	}
 
 	added = undefined;
 	return fragment;
 }
+
+export function fillTableMissingRow(node, source, sourceCellNode = null) {
+	const cellNode = node.tagName === "TD" ? node : parentOf(node, "TD");
+	if (!cellNode) return;
+	let td = sourceCellNode ?? findElement(cellNode, source);
+	if (!td) return;
+	const sourceTBody = parentOf(td, "TBODY");
+	const sourceTable = parentOf(sourceTBody, "TABLE");
+	const sourceColGroup = sourceTable.querySelector("COLGROUP");
+	if (sourceColGroup) {
+		// add or replace colgroup
+		const currentTable = parentOf(node, "TABLE");
+		const currentColGroup = currentTable.querySelector("COLGROUP");
+		currentColGroup?.remove();
+		const newColGroup = sourceColGroup.cloneNode(true);
+		currentTable.insertBefore(newColGroup, currentTable.firstElementChild);
+	}
+
+	const currentY = Math.max(
+		...[...cellNode.parentNode.children].map((td) =>
+			parseInt(td.dataset.yStart)
+		)
+	);
+	const hasRowSpan = [...sourceTBody.querySelectorAll("[rowspan]")].some(
+		(td) => td.rowSpan > 1
+	);
+	const dataCellsSize = hasRowSpan
+		? [...sourceTBody.children]
+				.map((tr) =>
+					[...tr.children].map((td) => ({
+						node: td,
+						xStart: parseInt(td.dataset.xStart),
+						xEnd: parseInt(td.dataset.xEnd),
+						yStart: parseInt(td.dataset.yStart),
+						yEnd: parseInt(td.dataset.yEnd),
+					}))
+				)
+				.flat(1)
+		: [];
+	let prev = cellNode;
+	while ((td = td.previousElementSibling)) {
+		const sib = td.cloneNode(false);
+		cellNode.parentElement.insertBefore(sib, prev);
+		prev = sib;
+	}
+
+	const xMax = Math.max(...dataCellsSize.map((d) => d.xEnd));
+	const xSum = Array.from({ length: xMax + 1 }, (_, index) => 1 + index).reduce(
+		(partialSum, a) => partialSum + a,
+		0
+	);
+	const currentRowData = hasRowSpan
+		? [...cellNode.parentNode.children].map((td) => ({
+				xStart: parseInt(td.dataset.xStart),
+				xEnd: parseInt(td.dataset.xEnd),
+		  }))
+		: [];
+	const rowXSum = currentRowData
+		.map((c) =>
+			Array.from(
+				{ length: c.xEnd - c.xStart + 1 },
+				(_, index) => c.xStart + index + 1
+			)
+		)
+		.flat(1)
+		.reduce((partialSum, a) => partialSum + a, 0);
+	const needFillMissingCells = hasRowSpan && rowXSum !== xSum;
+	if (needFillMissingCells) {
+		// create missing columns with [rowspan]
+		let currentCol = cellNode.parentNode.firstElementChild;
+		for (let idx = 0; idx <= xMax; ++idx) {
+			const currentColXStart = parseInt(currentCol.dataset.xStart, 10);
+			let append = false;
+
+			if (
+				currentColXStart <= idx &&
+				idx <= parseInt(currentCol.dataset.xEnd, 10)
+			)
+				continue;
+			if (idx > currentColXStart) {
+				if (currentCol.nextElementSibling) {
+					currentCol = currentCol.nextElementSibling;
+					if (
+						parseInt(currentCol.dataset.xStart, 10) <= idx &&
+						idx <= parseInt(currentCol.dataset.xEnd, 10)
+					)
+						continue;
+				} else {
+					append = true;
+				}
+			}
+
+			const cell = dataCellsSize.find(
+				(c) =>
+					c.xStart <= idx &&
+					idx <= c.xEnd &&
+					c.yStart <= currentY &&
+					currentY <= c.yEnd
+			);
+			if (!cell) {
+				console.warn("Cell not found", idx, currentY, dataCellsSize);
+				continue;
+			}
+			// insert cell
+			const newCell = cell.node.cloneNode(false);
+			newCell.classList.add(ADDED_CELL_CLASS);
+			const newCellYEnd = parseInt(newCell.dataset.yEnd, 10);
+			newCell.setAttribute("rowspan", newCellYEnd - currentY + 1);
+			if (!append) {
+				currentCol.parentNode.insertBefore(newCell, currentCol);
+			} else {
+				currentCol.parentNode.appendChild(newCell);
+				currentCol = newCell;
+			}
+		}
+	}
+}
+
 /*
 export function split(bound, cutElement, breakAfter) {
 		let needsRemoval = [];
@@ -835,7 +845,10 @@ export function nextCellSiblingWithContent(node, limiter) {
 	let nodeIdx = parentCell.nextElementSibling;
 	let prevNodeIdx;
 	while (!hasContentSibling && nodeIdx) {
-		if (nodeIdx.textContent.trim() !== "" || nodeIdx.querySelector(DomElementsWithSize.join(","))) {
+		if (
+			nodeIdx.textContent.trim() !== "" ||
+			nodeIdx.querySelector(DomElementsWithSize.join(","))
+		) {
 			hasContentSibling = true;
 		}
 		prevNodeIdx = nodeIdx;
@@ -858,15 +871,26 @@ export function getAllNextTableCells(node, limiter) {
 
 		if (!cell) return otherCells;
 
+		const currentRowSpan = parseInt(cell.getAttribute("rowspan")) || 1;
 		let nodeIdx = cell.nextElementSibling;
+		let rowNode = nodeIdx?.parentElement;
+		for (let count = 0; count < currentRowSpan && rowNode; ++count) {
+			if (count > 0) {
+				nodeIdx = rowNode.firstElementChild;
+			}
 
-		while (nodeIdx) {
-			otherCells.push(nodeIdx);
-			nodeIdx = nodeIdx.nextElementSibling;
+			while (nodeIdx) {
+				otherCells.push(nodeIdx);
+				nodeIdx = nodeIdx.nextElementSibling;
+			}
+			rowNode = rowNode?.nextElementSibling;
 		}
 
 		const table = parentOf(cell, "TABLE", limiter);
-		return [...otherCells, ...(table ? getAllNextTableCells(table, limiter) : [])];
+		return [
+			...otherCells,
+			...(table ? getAllNextTableCells(table, limiter) : []),
+		];
 	};
 	return getNextCells(node, limiter);
 }
