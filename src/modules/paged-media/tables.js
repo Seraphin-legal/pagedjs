@@ -25,17 +25,6 @@ class Tables extends Handler {
 			toRemove.remove();
 		}
 
-		const cellsToRemove = [
-			...page.area.querySelectorAll(`td.${EMPTY_CELL_CLASS}`),
-		];
-		for (const toRemove of cellsToRemove) {
-			const parent = toRemove.parentNode;
-			toRemove.remove();
-			if (parent.childElementCount === 0) {
-				parent.remove();
-			}
-		}
-
 		const addedCells = [
 			...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`),
 		];
@@ -50,11 +39,17 @@ class Tables extends Handler {
 		}
 		const mainContainer = page.area.querySelector("main");
 		if (mainContainer) {
+			const tables = mainContainer.querySelectorAll("table");
+			for (const table of tables) {
+				this.fixTableRows(table);
+			}
+
 			const previousPageMainContainer =
 				pageElement.previousElementSibling?.querySelector(
 					".pagedjs_area > .pagedjs_page_content > div main"
 				);
 			if (previousPageMainContainer) {
+				// remove duplicated table rows
 				const previousPageLastElementTable =
 					previousPageMainContainer.querySelector(
 						":scope > div[data-type='clause']:last-child > div[data-type='variant']:last-child > div:last-child > table,\
@@ -174,6 +169,48 @@ class Tables extends Handler {
 			}
 		}
 		return cellsPosData;
+	}
+
+	fixTableRows(table) {
+		const bigCells = table.querySelectorAll(
+			"td[rowspan]:not([rowspan='1'])"
+		);
+
+		if (bigCells.length === 0) return;
+		// tag empty cells
+		const singleCells = table.querySelectorAll("td[rowspan='1'],td:not([rowspan])");
+		for (const cell of singleCells) {
+			if (isTableCellEmpty(cell)) {
+				cell.classList.add(EMPTY_CELL_CLASS);
+			}
+		}
+		// move big cells from empty rows
+		const bigCellRows = [...new Set([...bigCells].map(cell => cell.parentNode))];
+		for (let idx = 0; idx < bigCellRows.length; ++idx) {
+			const row = bigCellRows[idx];
+			const nextRow = row.nextElementSibling;
+			if (nextRow?.tagName === "TR" && 
+				!row.querySelector(`td[rowspan='1']:not(.${EMPTY_CELL_CLASS}),td:not([rowspan]):not(.${EMPTY_CELL_CLASS})`)) {
+				// line with empty cells and cell with rowspan > 1, move big cells to next row
+				const rowBigCells = [...row.querySelectorAll("td[rowspan]:not([rowspan='1'])")];
+				
+				for (const bigCell of rowBigCells) {
+					const bigCellX = parseInt(bigCell.dataset.xStart);
+					for (let cellIdx = 0; cellIdx < nextRow.childElementCount; ++cellIdx) {
+						const cell = nextRow.children[cellIdx];
+						if (bigCellX < (parseInt(cell.dataset.xStart) || 1)) {
+							nextRow.insertBefore(bigCell, cell);
+							bigCell.setAttribute("rowspan", parseInt(bigCell.getAttribute("rowspan")) - 1);
+							break;
+						}
+					}
+					if (bigCellRows[idx + 1] !== nextRow) {
+						bigCellRows.splice(idx + 1, 0, nextRow);
+					}
+				}
+				row.remove();
+			}
+		}
 	}
 }
 

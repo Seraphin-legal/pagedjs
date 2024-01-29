@@ -33,7 +33,6 @@ import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
 import {
 	isTableCellEmpty,
-	EMPTY_CELL_CLASS,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
 
@@ -1243,7 +1242,6 @@ class Layout {
 					isFirstChild(range.startContainer, parentCell)
 				) {
 					range.setStartBefore(parentCell.firstChild);
-					parentCell.classList.add(EMPTY_CELL_CLASS);
 				}
 
 				range.setEndAfter(parentCell.lastChild);
