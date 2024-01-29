@@ -252,16 +252,16 @@ export function fillTableMissingRow(node, source, sourceCellNode = null) {
 	);
 	const dataCellsSize = hasRowSpan
 		? [...sourceTBody.children]
-				.map((tr) =>
-					[...tr.children].map((td) => ({
-						node: td,
-						xStart: parseInt(td.dataset.xStart),
-						xEnd: parseInt(td.dataset.xEnd),
-						yStart: parseInt(td.dataset.yStart),
-						yEnd: parseInt(td.dataset.yEnd),
-					}))
-				)
-				.flat(1)
+			.map((tr) =>
+				[...tr.children].map((td) => ({
+					node: td,
+					xStart: parseInt(td.dataset.xStart),
+					xEnd: parseInt(td.dataset.xEnd),
+					yStart: parseInt(td.dataset.yStart),
+					yEnd: parseInt(td.dataset.yEnd),
+				}))
+			)
+			.flat(1)
 		: [];
 	let prev = cellNode;
 	while ((td = td.previousElementSibling)) {
@@ -277,8 +277,8 @@ export function fillTableMissingRow(node, source, sourceCellNode = null) {
 	);
 	const currentRowData = hasRowSpan
 		? [...cellNode.parentNode.children].map((td) => ({
-				xStart: parseInt(td.dataset.xStart),
-				xEnd: parseInt(td.dataset.xEnd),
+			xStart: parseInt(td.dataset.xStart),
+			xEnd: parseInt(td.dataset.xEnd),
 		  }))
 		: [];
 	const rowXSum = currentRowData

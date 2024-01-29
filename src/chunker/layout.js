@@ -32,6 +32,7 @@ import RenderResult, { OverflowContentError } from "./renderresult.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
 import {
+	isTableCellEmpty,
 	EMPTY_CELL_CLASS,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
@@ -265,10 +266,16 @@ class Layout {
 
 				const currentCol =
 					node.tagName === "TD" ? node : parentOf(node, "TD", source);
-				let overflow;
 				if (
 					currentCol &&
-					(overflow = this.findOverflow(wrapper, bounds, undefined, source)) // TODO optimize, replace findOverflow here by another function
+					this.findOverflow(
+						wrapper,
+						bounds,
+						undefined,
+						source,
+						prevBreakToken,
+						true
+					) // TODO optimize, replace findOverflow here by another function
 				) {
 					// add missing content in the current columns
 					let cellChildIdx = currentCol.firstChild;
@@ -285,21 +292,20 @@ class Layout {
 					}
 
 					// create missing cells
-					let nextCell = currentCol.nextElementSibling;
-					while (nextCell) {
-						if (
-							!wrapper.querySelector(`[data-ref="${nextCell.dataset.ref}"]`)
-						) {
+					const otherCellsInTable = getAllNextTableCells(currentCol, source);
+					for (const nextCell of otherCellsInTable) {
+						const existingCell = findElement(nextCell, wrapper, true);
+						if (!existingCell || isTableCellEmpty(existingCell)) {
 							const prevBreakElem = Array.isArray(breakToken)
 								? breakToken.find((bt) => {
-										const tableCol =
+									const tableCol =
 											bt.node.tagName === "TD"
 												? bt.node
 												: parentOf(bt.node, "TD");
-										return (
-											!!tableCol &&
+									return (
+										!!tableCol &&
 											nextCell.dataset.ref === tableCol.dataset.ref
-										);
+									);
 								  })
 								: null;
 							if (prevBreakElem) {
@@ -338,7 +344,6 @@ class Layout {
 								);
 							}
 						}
-						nextCell = nextCell.nextElementSibling;
 					}
 				}
 
@@ -507,6 +512,23 @@ class Layout {
 				}
 
 				if (destIdx && cloneIdx) {
+					// check table cell that has been duplicated because of the rowSpan > 1
+					const tbody =
+						destIdx.tagName === "TBODY"
+							? destIdx
+							: parentOf(destIdx, "TBODY", fragment);
+					if (tbody) {
+						const bigRowSpans = tbody.querySelectorAll(
+							"td[rowspan]:not([rowspan='1'])"
+						);
+						bigRowSpans.forEach((td) => {
+							const foundCell = findElement(td, cloneIdx, true);
+							if (foundCell) {
+								foundCell.remove(); // remove duplciated cell
+							}
+						});
+					}
+
 					// append found element inside the correct parent
 					destIdx.appendChild(cloneIdx);
 				} else {
@@ -719,7 +741,13 @@ class Layout {
 		prevBreakToken,
 		extract = true
 	) {
-		let overflow = this.findOverflow(rendered, bounds, undefined, source);
+		let overflow = this.findOverflow(
+			rendered,
+			bounds,
+			undefined,
+			source,
+			prevBreakToken
+		);
 		let breakTokens, breakLetter;
 
 		let overflowHooks = this.hooks.onOverflow.triggerSync(
@@ -806,12 +834,12 @@ class Layout {
 		let { width, height } =
 			element.childElementCount > 0
 				? {
-						width: [...element.children]
-							.map((c) => c.offsetWidth)
-							.reduce((partialsum, a) => partialsum + a, 0),
-						height: [...element.children]
-							.map((c) => c.offsetHeight)
-							.reduce((partialsum, a) => partialsum + a, 0),
+					width: [...element.children]
+						.map((c) => c.offsetWidth)
+						.reduce((partialsum, a) => partialsum + a, 0),
+					height: [...element.children]
+						.map((c) => c.offsetHeight)
+						.reduce((partialsum, a) => partialsum + a, 0),
 				  }
 				: element.getBoundingClientRect();
 		let scrollWidth = constrainingElement ? constrainingElement.scrollWidth : 0;
@@ -825,7 +853,14 @@ class Layout {
 		return res;
 	}
 
-	findOverflow(rendered, bounds = this.bounds, gap = this.gap, source) {
+	findOverflow(
+		rendered,
+		bounds = this.bounds,
+		gap = this.gap,
+		source,
+		prevBreakToken = null,
+		quitOnFirstFound = false
+	) {
 		if (!this.hasOverflow(rendered, bounds)) return;
 
 		let start = Math.floor(bounds.left);
@@ -945,8 +980,12 @@ class Layout {
 							rendered,
 							source
 						)) &&
-							rangeArray.push(range)) ||
-							(rangeArray.length > 0 && rangeArray.push(range) && false))
+							rangeArray.push(range) &&
+							!quitOnFirstFound) ||
+							(rangeArray.length > 0 &&
+								!quitOnFirstFound &&
+								rangeArray.push(range) &&
+								false))
 					) {
 						skipChildren = true;
 						range = null;
@@ -965,8 +1004,12 @@ class Layout {
 							rendered,
 							source
 						)) &&
-							rangeArray.push(range)) ||
-							(rangeArray.length > 0 && rangeArray.push(range) && false))
+							rangeArray.push(range) &&
+							!quitOnFirstFound) ||
+							(rangeArray.length > 0 &&
+								!quitOnFirstFound &&
+								rangeArray.push(range) &&
+								false))
 					) {
 						skipChildren = true;
 						range = null;
@@ -985,8 +1028,12 @@ class Layout {
 							rendered,
 							source
 						)) &&
-							rangeArray.push(range)) ||
-							(rangeArray.length > 0 && rangeArray.push(range) && false))
+							rangeArray.push(range) &&
+							!quitOnFirstFound) ||
+							(rangeArray.length > 0 &&
+								!quitOnFirstFound &&
+								rangeArray.push(range) &&
+								false))
 					) {
 						skipChildren = true;
 						range = null;
@@ -1058,8 +1105,12 @@ class Layout {
 							rendered,
 							source
 						)) &&
-							rangeArray.push(range)) ||
-							(rangeArray.length > 0 && rangeArray.push(range) && false))
+							rangeArray.push(range) &&
+							!quitOnFirstFound) ||
+							(rangeArray.length > 0 &&
+								!quitOnFirstFound &&
+								rangeArray.push(range) &&
+								false))
 					) {
 						skipChildren = true;
 						range = null;
@@ -1072,11 +1123,11 @@ class Layout {
 			const isTableRowWithLongCell =
 				node.tagName === "TR"
 					? [
-							...node.querySelectorAll(
-								":scope > td[rowspan]:not([rowspan=\"1\"])"
-							),
+						...node.querySelectorAll(
+							":scope > td[rowspan]:not([rowspan='1'])"
+						),
 					  ].some(
-							(cell) => Math.round(getBoundingClientRect(cell).bottom) >= vEnd
+						(cell) => Math.round(getBoundingClientRect(cell).bottom) >= vEnd
 					  )
 					: false;
 
@@ -1100,10 +1151,45 @@ class Layout {
 		rendered.classList.remove(FINDING_OVERFLOW_CLASS); // remove process class
 		// Find End
 		if (rangeArray.length > 0) {
-			const otherCellsInTable = getAllNextTableCells(
-				rangeArray[0].startContainer,
-				rendered
-			);
+			if (quitOnFirstFound) return rangeArray[0];
+			const firstCellBroke =
+				rangeArray[0].startContainer.tagName === "TD"
+					? rangeArray[0].startContainer
+					: parentOf(rangeArray[0].startContainer, "TD", rendered);
+			const otherCellsInTable = getAllNextTableCells(firstCellBroke, rendered);
+			const breakedRows = [
+				...new Set(
+					rangeArray.map((range) =>
+						range.startContainer.tagName === "TR"
+							? range.startContainer
+							: parentOf(range.startContainer, "TR", rendered)
+					)
+				),
+			].filter((range) => !!range);
+			const prevBreakRows = [
+				...new Set(
+					(!Array.isArray(prevBreakToken)
+						? [prevBreakToken]
+						: prevBreakToken
+					).map((bt) =>
+						!bt?.node || bt.node === "TR"
+							? bt.node
+							: parentOf(bt.node, "TR", source)
+					)
+				),
+			].filter((node) => !!node);
+
+			// remove cells that are not in line that doesn't have any break
+			for (let idx = otherCellsInTable.length - 1; idx > 0; --idx) {
+				const cellRow = parentOf(otherCellsInTable[idx], "TR", rendered);
+				if (
+					cellRow &&
+					!breakedRows.includes(cellRow) &&
+					!prevBreakRows.some((pbr) => pbr.dataset.ref === cellRow.dataset.ref)
+				) {
+					otherCellsInTable.splice(idx, 1);
+				}
+			}
 
 			// add break the other cells that are not detected as overflowing to know that they are already ended
 			for (let idx = 0; idx < otherCellsInTable.length; ++idx) {
@@ -1132,7 +1218,9 @@ class Layout {
 					} else {
 						endLimiter = node.lastChild;
 					}
-					tableCell.appendChild(endLimiter.cloneNode(true));
+					if (!tableCell.lastChild?.classList?.contains(TABLE_BREAK_END_CLASS)) {
+						tableCell.appendChild(endLimiter.cloneNode(true));
+					}
 					// create range at the end of the cell
 					range = document.createRange();
 					range.selectNode(tableCell.lastChild);

@@ -4,8 +4,6 @@ export const TABLE_BREAK_END_CLASS = "break-end-token";
 export const ADDED_CELL_CLASS = "added-cell";
 export const EMPTY_CELL_CLASS = "empty-cell";
 
-export const DomElementsWithSize = ["img", "table", "br", "wbr", "hr"];
-
 class Tables extends Handler {
 	constructor(chunker, polisher, caller) {
 		super(chunker, polisher, caller);
@@ -59,8 +57,8 @@ class Tables extends Handler {
 			if (previousPageMainContainer) {
 				const previousPageLastElementTable =
 					previousPageMainContainer.querySelector(
-						":scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > div:last-child > table,\
-					:scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > table:last-child,\
+						":scope > div[data-type='clause']:last-child > div[data-type='variant']:last-child > div:last-child > table,\
+					:scope > div[data-type='clause']:last-child > div[data-type='variant']:last-child > table:last-child,\
 					:scope > div:last-child > table,\
 					:scope > table:last-child"
 					);
@@ -73,20 +71,22 @@ class Tables extends Handler {
 					];
 
 					for (const lastPreviousPageRow of allLastPreviousPageRow) {
-						const currentRow = mainContainer.querySelector(`tbody tr[data-ref="${lastPreviousPageRow.dataset.ref}"]`);
+						const currentRow = mainContainer.querySelector(
+							`tbody tr[data-ref="${lastPreviousPageRow.dataset.ref}"]`
+						);
 
-						if (
-							currentRow &&
-							this.isTableRowEmpty(lastPreviousPageRow)
-						) {
+						if (currentRow && this.isTableRowEmpty(lastPreviousPageRow)) {
 							// remove last row from previous page as it is duplicated
 							const previousTBody = lastPreviousPageRow.parentNode;
 							lastPreviousPageRow.remove();
 							if (previousTBody.childNodes.length === 0) {
 								previousPageLastElementTable.remove();
 							}
-						}
-						 else if (currentRow && currentRow.childElementCount === 1 && currentRow.querySelector('td:empty')) {
+						} else if (
+							currentRow &&
+							currentRow.childElementCount === 1 &&
+							currentRow.querySelector("td:empty")
+						) {
 							currentRow.firstElementChild.style.backgroundColor = "pink";
 						}
 						// else if (
@@ -100,8 +100,8 @@ class Tables extends Handler {
 			}
 
 			const lastElementTable = mainContainer.querySelector(
-				":scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > div:last-child > table,\
-				:scope > div[data-type=\"clause\"]:last-child > div[data-type=\"variant\"]:last-child > table:last-child,\
+				":scope > div[data-type='clause']:last-child > div[data-type='variant']:last-child > div:last-child > table,\
+				:scope > div[data-type='clause']:last-child > div[data-type='variant']:last-child > table:last-child,\
 				:scope > div:last-child > table,\
 				:scope > table:last-child"
 			);
@@ -111,30 +111,9 @@ class Tables extends Handler {
 		}
 	}
 
-	isTableCellEmpty(cell) {
-		const cellContent = cell.textContent.trim();
-
-		// Check if the cell contains only whitespace or is empty
-		if (cellContent !== "" && cellContent !== "\u00A0") {
-			return false;
-		}
-
-		const elementWithSize = cell.querySelector(DomElementsWithSize.join(","));
-		if (elementWithSize) {
-			return false;
-		}
-
-		for (let idx; idx < cell.childNodes.length; ++idx) {
-			if (cell.childNodes[idx].offsetHeight > 0) {
-				return false;
-			}
-		}
-		return true;
-	}
-
 	isTableRowEmpty(row) {
 		for (let idx = 0; idx < row.childNodes.length; ++idx) {
-			if (!this.isTableCellEmpty(row.childNodes[idx])) {
+			if (!isTableCellEmpty(row.childNodes[idx])) {
 				return false;
 			}
 		}
@@ -196,6 +175,29 @@ class Tables extends Handler {
 		}
 		return cellsPosData;
 	}
+}
+
+export const DomElementsWithSize = ["img", "table", "br", "wbr", "hr"];
+
+export function isTableCellEmpty(cell) {
+	const cellContent = cell.textContent.trim();
+
+	// Check if the cell contains only whitespace or is empty
+	if (cellContent !== "" && cellContent !== "\u00A0") {
+		return false;
+	}
+
+	const elementWithSize = cell.querySelector(DomElementsWithSize.join(","));
+	if (elementWithSize) {
+		return false;
+	}
+
+	for (let idx; idx < cell.childNodes.length; ++idx) {
+		if (cell.childNodes[idx].offsetHeight > 0) {
+			return false;
+		}
+	}
+	return true;
 }
 
 export default Tables;
