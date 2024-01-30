@@ -32,6 +32,7 @@ import RenderResult, { OverflowContentError } from "./renderresult.js";
 import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
 import {
+	getNodeTableRow,
 	isTableCellEmpty,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
@@ -303,9 +304,9 @@ class Layout {
 												: parentOf(bt.node, "TD");
 									return (
 										!!tableCol &&
-											nextCell.dataset.ref === tableCol.dataset.ref
+										nextCell.dataset.ref === tableCol.dataset.ref
 									);
-								  })
+								})
 								: null;
 							if (prevBreakElem) {
 								// resume the table split
@@ -839,7 +840,7 @@ class Layout {
 					height: [...element.children]
 						.map((c) => c.offsetHeight)
 						.reduce((partialsum, a) => partialsum + a, 0),
-				  }
+				}
 				: element.getBoundingClientRect();
 		let scrollWidth = constrainingElement ? constrainingElement.scrollWidth : 0;
 		let scrollHeight = constrainingElement
@@ -1125,9 +1126,9 @@ class Layout {
 						...node.querySelectorAll(
 							":scope > td[rowspan]:not([rowspan='1'])"
 						),
-					  ].some(
+					].some(
 						(cell) => Math.round(getBoundingClientRect(cell).bottom) >= vEnd
-					  )
+					)
 					: false;
 
 			// Skip children
@@ -1156,16 +1157,14 @@ class Layout {
 					? rangeArray[0].startContainer
 					: parentOf(rangeArray[0].startContainer, "TD", rendered);
 			const otherCellsInTable = getAllNextTableCells(firstCellBroke, rendered);
-			const breakedRows = [
+			const brokenRows = [
 				...new Set(
-					rangeArray.map((range) =>
-						range.startContainer.tagName === "TR"
-							? range.startContainer
-							: parentOf(range.startContainer, "TR", rendered)
-					)
+					rangeArray
+						.map((range) => getNodeTableRow(range.startContainer, true))
+						.flat(1)
 				),
 			].filter((range) => !!range);
-			const prevBreakRows = [
+			const prevBrokenRows = [
 				...new Set(
 					(!Array.isArray(prevBreakToken)
 						? [prevBreakToken]
@@ -1183,8 +1182,8 @@ class Layout {
 				const cellRow = parentOf(otherCellsInTable[idx], "TR", rendered);
 				if (
 					cellRow &&
-					!breakedRows.includes(cellRow) &&
-					!prevBreakRows.some((pbr) => pbr.dataset.ref === cellRow.dataset.ref)
+					!brokenRows.includes(cellRow) &&
+					!prevBrokenRows.some((pbr) => pbr.dataset.ref === cellRow.dataset.ref)
 				) {
 					otherCellsInTable.splice(idx, 1);
 				}
@@ -1217,7 +1216,9 @@ class Layout {
 					} else {
 						endLimiter = node.lastChild;
 					}
-					if (!tableCell.lastChild?.classList?.contains(TABLE_BREAK_END_CLASS)) {
+					if (
+						!tableCell.lastChild?.classList?.contains(TABLE_BREAK_END_CLASS)
+					) {
 						tableCell.appendChild(endLimiter.cloneNode(true));
 					}
 					// create range at the end of the cell

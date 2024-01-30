@@ -107,8 +107,8 @@ class Tables extends Handler {
 	}
 
 	isTableRowEmpty(row) {
-		for (let idx = 0; idx < row.childNodes.length; ++idx) {
-			if (!isTableCellEmpty(row.childNodes[idx])) {
+		for (let idx = 0; idx < row.childElementCount; ++idx) {
+			if (!isTableCellEmpty(row.children[idx])) {
 				return false;
 			}
 		}
@@ -235,6 +235,33 @@ export function isTableCellEmpty(cell) {
 		}
 	}
 	return true;
+}
+
+function parentOf(node, nodeName, limiter) {
+	if (limiter && node === limiter) {
+		return;
+	}
+	if (node.parentNode) {
+		while ((node = node.parentNode)) {
+			if (limiter && node === limiter) {
+				return;
+			}
+			if (node.nodeName === nodeName) {
+				return node;
+			}
+		}
+	}
+}
+
+export function getNodeTableRow(node, recursively = false) {
+	const row = !node || node.tagName === "TR" ? node : parentOf(node, "TR");
+
+	if (!row || !recursively) {
+		return row;
+	}
+	const parentRows = getNodeTableRow(row.parentNode, recursively);
+	
+	return !parentRows ? row : (Array.isArray(parentRows) ? [row, ...parentRows] : [row, parentRows]);
 }
 
 export default Tables;
