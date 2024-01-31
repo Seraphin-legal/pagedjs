@@ -33,6 +33,7 @@ import EventEmitter from "event-emitter";
 import Hook from "../utils/hook.js";
 import {
 	getNodeTableRow,
+	getParentsCells,
 	isTableCellEmpty,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
@@ -85,9 +86,9 @@ class Layout {
 			source,
 			Array.isArray(breakToken) ? breakToken[0] : breakToken
 		);
-		const rowToResume =
+		const cellToResume =
 			Array.isArray(breakToken) && breakToken.length > 1
-				? breakToken.slice(1).map((bt) => parentOf(bt.node, "TD", source))
+				? breakToken.slice(1).map((bt) => getParentsCells(bt.node, source))
 				: [];
 		let walker = walk(start, source);
 
@@ -112,8 +113,12 @@ class Layout {
 			node = next.value;
 			done = next.done;
 			let resumeIdx;
-			if ((resumeIdx = rowToResume.indexOf(node)) !== -1) {
-				// TODO update walker
+			if (
+				(resumeIdx = cellToResume.findIndex((cells) =>
+					cells.some((c) => c === node)
+				)) !== -1
+			) {
+				// update node to resume from break token
 				const colBreak = breakToken[resumeIdx + 1];
 				const resumeNode = this.getStart(source, colBreak);
 				walker = walk(resumeNode, source);
@@ -304,7 +309,7 @@ class Layout {
 												: parentOf(bt.node, "TD");
 									return (
 										!!tableCol &&
-										nextCell.dataset.ref === tableCol.dataset.ref
+											nextCell.dataset.ref === tableCol.dataset.ref
 									);
 								})
 								: null;
@@ -1152,16 +1157,27 @@ class Layout {
 		// Find End
 		if (rangeArray.length > 0) {
 			if (quitOnFirstFound) return rangeArray[0];
-			const firstCellBroke =
+			const firstBrokenCell =
 				rangeArray[0].startContainer.tagName === "TD"
 					? rangeArray[0].startContainer
 					: parentOf(rangeArray[0].startContainer, "TD", rendered);
-			const otherCellsInTable = getAllNextTableCells(firstCellBroke, rendered);
+			const otherBrokenCells = rangeArray
+				.slice(1)
+				.map((r) =>
+					r.startContainer.tagName === "TD"
+						? r.startContainer
+						: parentOf(r.startContainer, "TD", rendered)
+				);
+			const otherCellsInTable = getAllNextTableCells(
+				firstBrokenCell,
+				rendered,
+				otherBrokenCells
+			);
 			const brokenRows = [
 				...new Set(
-					rangeArray
-						.map((range) => getNodeTableRow(range.startContainer, true))
-						.flat(1)
+					[firstBrokenCell, ...otherBrokenCells].flatMap((cell) =>
+						getNodeTableRow(cell, true)
+					)
 				),
 			].filter((range) => !!range);
 			const prevBrokenRows = [

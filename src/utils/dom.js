@@ -864,35 +864,48 @@ export function nextCellSiblingWithContent(node, limiter) {
 	}
 }
 
-export function getAllNextTableCells(node, limiter) {
-	const getNextCells = (node, limiter) => {
-		const cell = node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
-		const otherCells = [];
+export function getAllNextTableCells(node, limiter, nodesToInclude = []) {
+	const cell = node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
+	const cellsFound = [];
 
-		if (!cell) return otherCells;
+	if (!cell) return cellsFound;
 
-		const currentRowSpan = parseInt(cell.getAttribute("rowspan")) || 1;
-		let nodeIdx = cell.nextElementSibling;
-		let rowNode = nodeIdx?.parentElement;
-		for (let count = 0; count < currentRowSpan && rowNode; ++count) {
-			if (count > 0) {
-				nodeIdx = rowNode.firstElementChild;
-			}
-
-			while (nodeIdx) {
-				otherCells.push(nodeIdx);
-				nodeIdx = nodeIdx.nextElementSibling;
-			}
-			rowNode = rowNode?.nextElementSibling;
+	const currentRowSpan = parseInt(cell.getAttribute("rowspan")) || 1;
+	let nodeIdx = cell.nextElementSibling;
+	let rowNode = nodeIdx?.parentElement;
+	for (let count = 0; count < currentRowSpan && rowNode; ++count) {
+		if (count > 0) {
+			nodeIdx = rowNode.firstElementChild;
 		}
 
-		const table = parentOf(cell, "TABLE", limiter);
-		return [
-			...otherCells,
-			...(table ? getAllNextTableCells(table, limiter) : []),
-		];
-	};
-	return getNextCells(node, limiter);
+		while (nodeIdx) {
+			const subCellsIncluded = nodesToInclude.filter((n) => {
+				const includeCell =
+					n.tagName === "TD" ? n : parentOf(n, "TD", limiter);
+				return includeCell !== nodeIdx && nodeIdx.contains(includeCell);
+			});
+			if (
+				subCellsIncluded.length > 0
+			) {
+				const subCellsRows = [...new Set(subCellsIncluded.map(c => parentOf(c, "TR", limiter)))];
+				for (const subRow of subCellsRows) {
+					const subRowCell = subCellsIncluded.find(c => parentOf(c, "TR", limiter) === subRow); 
+					const subCells = getAllNextTableCells(subRowCell, nodeIdx);
+					cellsFound.push(subRowCell);
+					cellsFound.push(...subCells);
+				}
+			}
+			cellsFound.push(nodeIdx);
+			nodeIdx = nodeIdx.nextElementSibling;
+		}
+		rowNode = rowNode?.nextElementSibling;
+	}
+
+	const table = parentOf(cell, "TABLE", limiter);
+	return [
+		...cellsFound,
+		...(table ? getAllNextTableCells(table, limiter, nodesToInclude) : []).filter(node => node !== cell),
+	];
 }
 
 /**

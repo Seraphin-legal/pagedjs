@@ -264,4 +264,13 @@ export function getNodeTableRow(node, recursively = false) {
 	return !parentRows ? row : (Array.isArray(parentRows) ? [row, ...parentRows] : [row, parentRows]);
 }
 
+export function getParentsCells(node, limiter) {
+	const currentCell = !node || node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
+
+	if (!currentCell) {
+		return [];
+	}
+	return [currentCell, ...getParentsCells(currentCell.parentNode)];
+}
+
 export default Tables;
