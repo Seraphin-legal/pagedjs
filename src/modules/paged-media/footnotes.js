@@ -391,7 +391,7 @@ class Footnotes extends Handler {
 		let overflow = layout.findOverflow(noteInnerContent, noteContentBounds);
 
 		if (overflow) {
-			let { startContainer, startOffset } = overflow;
+			let { startContainer, startOffset } = Array.isArray(overflow) ? overflow[0] : overflow;
 			let startIsNode;
 			if (isElement(startContainer)) {
 				let start = startContainer.childNodes[startOffset];
@@ -490,7 +490,7 @@ class Footnotes extends Handler {
 		for (let n = 0; n < notes.length; n++) {
 			const note = notes[n];
 			// Check if the call for that footnote has been removed with the overflow
-			let call = removed.querySelector(`[data-footnote-call="${note.dataset.ref}"]`);
+			let call = Array.isArray(removed) ? removed.some(r => r.querySelector(`[data-footnote-call="${note.dataset.ref}"]`)) : removed.querySelector(`[data-footnote-call="${note.dataset.ref}"]`);
 			if (call) {
 				note.remove();
 			}

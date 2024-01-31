@@ -1694,7 +1694,7 @@ class AtPage extends Handler {
 	}
 
 	getStartElement(content, breakToken) {
-		let node = breakToken && breakToken.node;
+		let node = breakToken && (breakToken.node || breakToken[0].node);
 
 		if (!content && !breakToken) {
 			return;
