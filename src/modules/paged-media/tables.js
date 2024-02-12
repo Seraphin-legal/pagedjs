@@ -11,8 +11,12 @@ class Tables extends Handler {
 
 	afterParsed(parsed) {
 		const tables = parsed.querySelectorAll("table");
+		let count = 0;
 		tables.forEach((table) => {
 			this.setTableCellsSizeData(table);
+			if (this.tagTable(table, count)) {
+				count += 1;
+			}
 		});
 	}
 
@@ -77,19 +81,7 @@ class Tables extends Handler {
 							if (previousTBody.childNodes.length === 0) {
 								previousPageLastElementTable.remove();
 							}
-						} else if (
-							currentRow &&
-							currentRow.childElementCount === 1 &&
-							currentRow.querySelector("td:empty")
-						) {
-							currentRow.firstElementChild.style.backgroundColor = "pink";
 						}
-						// else if (
-						// 	mainContainer.querySelectorAll("table")[1]?.dataset.ref ===
-						// 	previousPageLastElementTable.dataset.ref
-						// ) {
-						// 	previousPageLastElementTable.remove();
-						// }
 					}
 				}
 			}
@@ -104,6 +96,29 @@ class Tables extends Handler {
 				page.area.style.columnWidth = "auto"; // show the table even if it is overflowing
 			}
 		}
+	}
+
+	tagTable(table, count, layerLevel = 0) {
+		if (typeof table.dataset.tableCount !== "undefined") {
+			return false;
+		}
+		table.setAttribute("data-table-count", count);
+		table.setAttribute("data-table-layer", layerLevel);
+		const cells = table.querySelectorAll(
+			":scope > tbody > tr > td, :scope > tbody > tr > th"
+		);
+		for (let idx = 0; idx < cells.length; ++idx) {
+			const cell = cells[idx];
+			const subTable = cell.querySelectorAll("table");
+
+			for (let subIdx = 0; subIdx < subTable.length; ++subIdx) {
+				this.tagTable(subTable[subIdx], subIdx, layerLevel + 1);
+			}
+			cell.setAttribute("data-table-idx", idx);
+			cell.setAttribute("data-table-count", count);
+			cell.setAttribute("data-table-layer", layerLevel);
+		}
+		return true;
 	}
 
 	isTableRowEmpty(row) {
@@ -172,35 +187,50 @@ class Tables extends Handler {
 	}
 
 	fixTableRows(table) {
-		const bigCells = table.querySelectorAll(
-			"td[rowspan]:not([rowspan='1'])"
-		);
+		const bigCells = table.querySelectorAll("td[rowspan]:not([rowspan='1'])");
 
 		if (bigCells.length === 0) return;
 		// tag empty cells
-		const singleCells = table.querySelectorAll("td[rowspan='1'],td:not([rowspan])");
+		const singleCells = table.querySelectorAll(
+			"td[rowspan='1'],td:not([rowspan])"
+		);
 		for (const cell of singleCells) {
 			if (isTableCellEmpty(cell)) {
 				cell.classList.add(EMPTY_CELL_CLASS);
 			}
 		}
 		// move big cells from empty rows
-		const bigCellRows = [...new Set([...bigCells].map(cell => cell.parentNode))];
+		const bigCellRows = [
+			...new Set([...bigCells].map((cell) => cell.parentNode)),
+		];
 		for (let idx = 0; idx < bigCellRows.length; ++idx) {
 			const row = bigCellRows[idx];
 			const nextRow = row.nextElementSibling;
-			if (nextRow?.tagName === "TR" && 
-				!row.querySelector(`td[rowspan='1']:not(.${EMPTY_CELL_CLASS}),td:not([rowspan]):not(.${EMPTY_CELL_CLASS})`)) {
+			if (
+				nextRow?.tagName === "TR" &&
+				!row.querySelector(
+					`td[rowspan='1']:not(.${EMPTY_CELL_CLASS}),td:not([rowspan]):not(.${EMPTY_CELL_CLASS})`
+				)
+			) {
 				// line with empty cells and cell with rowspan > 1, move big cells to next row
-				const rowBigCells = [...row.querySelectorAll("td[rowspan]:not([rowspan='1'])")];
-				
+				const rowBigCells = [
+					...row.querySelectorAll("td[rowspan]:not([rowspan='1'])"),
+				];
+
 				for (const bigCell of rowBigCells) {
 					const bigCellX = parseInt(bigCell.dataset.xStart);
-					for (let cellIdx = 0; cellIdx < nextRow.childElementCount; ++cellIdx) {
+					for (
+						let cellIdx = 0;
+						cellIdx < nextRow.childElementCount;
+						++cellIdx
+					) {
 						const cell = nextRow.children[cellIdx];
 						if (bigCellX < (parseInt(cell.dataset.xStart) || 1)) {
 							nextRow.insertBefore(bigCell, cell);
-							bigCell.setAttribute("rowspan", parseInt(bigCell.getAttribute("rowspan")) - 1);
+							bigCell.setAttribute(
+								"rowspan",
+								parseInt(bigCell.getAttribute("rowspan")) - 1
+							);
 							break;
 						}
 					}
@@ -260,17 +290,34 @@ export function getNodeTableRow(node, recursively = false) {
 		return row;
 	}
 	const parentRows = getNodeTableRow(row.parentNode, recursively);
-	
-	return !parentRows ? row : (Array.isArray(parentRows) ? [row, ...parentRows] : [row, parentRows]);
+
+	return !parentRows
+		? row
+		: Array.isArray(parentRows)
+			? [row, ...parentRows]
+			: [row, parentRows];
 }
 
 export function getParentsCells(node, limiter) {
-	const currentCell = !node || node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
+	const currentCell =
+		!node || node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
 
 	if (!currentCell) {
 		return [];
 	}
 	return [currentCell, ...getParentsCells(currentCell.parentNode)];
+}
+
+export function sortCellsData(cellsData) {
+	return cellsData.sort(({ node: a }, { node: b }) => {
+		if (parseInt(a.dataset.tableLayer) !== parseInt(b.dataset.tableLayer)) {
+			return parseInt(b.dataset.tableLayer) - parseInt(a.dataset.tableLayer); // Sort by greater layer
+		} else if (parseInt(a.dataset.tableCount) !== parseInt(b.dataset.tableCount)) {
+			return parseInt(a.dataset.tableCount) - parseInt(b.dataset.tableCount); // Sort by shorter count
+		} else {
+			return parseInt(a.dataset.tableIdx) - parseInt(b.dataset.tableIdx); // Sort by shorter idx
+		}
+	});
 }
 
 export default Tables;

@@ -35,6 +35,7 @@ import {
 	getNodeTableRow,
 	getParentsCells,
 	isTableCellEmpty,
+	sortCellsData,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
 
@@ -114,6 +115,7 @@ class Layout {
 			done = next.done;
 			let resumeIdx;
 			if (
+				node?.tagName === "TD" &&
 				(resumeIdx = cellToResume.findIndex((cells) =>
 					cells.some((c) => c === node)
 				)) !== -1
@@ -283,16 +285,29 @@ class Layout {
 					) // TODO optimize, replace findOverflow here by another function
 				) {
 					// add missing content in the current columns
-					let cellChildIdx = currentCol.firstChild;
-					while (cellChildIdx && !cellChildIdx.contains(node)) {
-						cellChildIdx = cellChildIdx.nextSibling;
-					}
-					if (cellChildIdx?.nextSibling) {
-						cellChildIdx = cellChildIdx.nextSibling;
-						while (cellChildIdx) {
-							this.hooks && this.hooks.layoutNode.trigger(cellChildIdx);
-							this.append(cellChildIdx, wrapper, breakToken, false);
-							cellChildIdx = cellChildIdx.nextSibling;
+					let prevNode = node;
+					let nodeIdx = node.nextSibling;
+					while (
+						nodeIdx ||
+						(prevNode?.tagName !== "TD" && prevNode.parentNode?.nextSibling)
+					) {
+						if (nodeIdx) {
+							if (
+								nodeIdx.tagName === "TD" &&
+								(resumeIdx = cellToResume.findIndex((cells) =>
+									cells.some((c) => c === nodeIdx)
+								)) !== -1
+							) {
+								// update node to resume from break token
+								const colBreak = breakToken[resumeIdx + 1];
+								nodeIdx = this.getStart(source, colBreak);
+							}
+							this.append(nodeIdx, wrapper, breakToken, false);
+							prevNode = nodeIdx;
+							nodeIdx = nodeIdx.nextSibling;
+						} else {
+							prevNode = prevNode.parentElement;
+							nodeIdx = prevNode.nextSibling;
 						}
 					}
 
@@ -476,7 +491,18 @@ class Layout {
 				) {
 					clone.innerHTML = "";
 				}
-				parent.appendChild(clone);
+
+				let existingNode;
+				if (
+					!isText(node) &&
+					(existingNode = parent.querySelector(
+						`[data-ref="${clone.dataset.ref}"]`
+					))
+				) {
+					existingNode.append(...clone.childNodes);
+				} else {
+					parent.appendChild(clone);
+				}
 			} else if (rebuild) {
 				let fragment = rebuildAncestors(node);
 				parent = findElement(node.parentNode, fragment);
@@ -1243,6 +1269,18 @@ class Layout {
 					rangeArray.splice(idx + 1, 0, range);
 				}
 			}
+
+			// sort cells
+			const cellsSorted = rangeArray.map((range, index) => ({idx: index, node: range.startContainer.tagName === "TD"
+				? range.startContainer
+				: parentOf(range.startContainer, "TD", rendered)}));
+			sortCellsData(cellsSorted);
+			const tmpArray = [];
+			for (const cell of cellsSorted) {
+				tmpArray.push(rangeArray[cell.idx]);
+			}
+			rangeArray.length = 0;
+			rangeArray.push(...tmpArray);
 
 			rangeArray.forEach((range, index) => {
 				const parentCell =
