@@ -308,7 +308,7 @@ export function getParentsCells(node, limiter) {
 	return [currentCell, ...getParentsCells(currentCell.parentNode)];
 }
 
-export function sortCellsData(cellsData) {
+export function sortCellsNodeData(cellsData) {
 	return cellsData.sort(({ node: a }, { node: b }) => {
 		if (parseInt(a.dataset.tableLayer) !== parseInt(b.dataset.tableLayer)) {
 			return parseInt(b.dataset.tableLayer) - parseInt(a.dataset.tableLayer); // Sort by greater layer
@@ -318,6 +318,76 @@ export function sortCellsData(cellsData) {
 			return parseInt(a.dataset.tableIdx) - parseInt(b.dataset.tableIdx); // Sort by shorter idx
 		}
 	});
+}
+
+export function sortCellsData(data) {
+	return data.sort((a, b) => {
+		if (parseInt(a.tableLayer) !== parseInt(b.tableLayer)) {
+			return parseInt(b.tableLayer) - parseInt(a.tableLayer); // Sort by greater layer
+		} else if (parseInt(a.tableCount) !== parseInt(b.tableCount)) {
+			return parseInt(a.tableCount) - parseInt(b.tableCount); // Sort by shorter count
+		} else {
+			return parseInt(a.tableIdx) - parseInt(b.tableIdx); // Sort by shorter idx
+		}
+	});
+}
+
+export function getCellData(cell) {
+	return {
+		ref: cell.dataset.ref,
+		tableLayer: parseInt(cell.dataset.tableLayer),
+		tableCount: parseInt(cell.dataset.tableCount),
+		tableIdx: parseInt(cell.dataset.tableIdx), 
+		yStart: parseInt(cell.dataset.yStart),
+		yEnd: parseInt(cell.dataset.yEnd),
+		xStart: parseInt(cell.dataset.xStart),
+		xEnd: parseInt(cell.dataset.xEnd),
+	};
+}
+
+function findCommonDataValue(array) {
+	// Find the maximum yStart and minimum yEnd
+	let maxYStart = Math.max(...array.map(obj => obj.yStart));
+	let minYEnd = Math.min(...array.map(obj => obj.yEnd));
+	
+	// Check if the maximum yStart is less than or equal to the minimum yEnd
+	if (maxYStart <= minYEnd) {
+		return maxYStart; // Common value exists, return maxYStart
+	} else {
+		return null; // Common value does not exist
+	}
+}
+
+// keep the cells
+export function keepRelevantCells(cellsToCheck, brokenCells) {
+	const brokenCellsData = brokenCells.map(c => getCellData(c));
+	const otherCellsData = cellsToCheck.filter(c => !brokenCells.includes(c)).map(c => getCellData(c));
+	const allData = [...brokenCellsData, ...otherCellsData];
+	const cellsToRemove = [];
+
+	const tableLayers = [... new Set(allData.map(c => c.tableLayer))];
+	for (const layerLevel of tableLayers) {
+		const tableCounts = [... new Set(allData.filter(c => c.tableLayer === layerLevel).map(c => c.tableCount))];
+
+		for (const tableCount of tableCounts) {
+			const tableBrokenData = brokenCellsData.filter(c => c.tableLayer === layerLevel && c.tableCount === tableCount);
+			const tableOtherData = otherCellsData.filter(c => c.tableLayer === layerLevel && c.tableCount === tableCount);
+
+			const lastEarlyY = Math.max(...tableBrokenData.map(d => d.yStart));
+			const brokenRowsBetweenY = tableBrokenData.filter(d => d.yStart <= lastEarlyY && lastEarlyY <= d.yEnd);
+			const commonY = findCommonDataValue(brokenRowsBetweenY);
+			const otherDataAfterY = tableOtherData.filter(d => d.yEnd > commonY);
+
+			cellsToRemove.push(...otherDataAfterY);
+		}
+	}
+
+	for (const cellToRemove of cellsToRemove) {
+		const idx = cellsToCheck.findIndex((cell) => cell.dataset.ref === cellToRemove);
+		if (idx !== -1) {
+			cellsToCheck.splice(idx, 1);
+		}
+	}
 }
 
 export default Tables;

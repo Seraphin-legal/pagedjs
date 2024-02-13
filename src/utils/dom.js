@@ -1,6 +1,8 @@
 import {
 	ADDED_CELL_CLASS,
 	DomElementsWithSize,
+	getCellData,
+	sortCellsData,
 } from "../modules/paged-media/tables";
 
 export function isElement(node) {
@@ -279,7 +281,7 @@ export function fillTableMissingRow(node, source, sourceCellNode = null) {
 		? [...cellNode.parentNode.children].map((td) => ({
 			xStart: parseInt(td.dataset.xStart),
 			xEnd: parseInt(td.dataset.xEnd),
-		  }))
+		}))
 		: [];
 	const rowXSum = currentRowData
 		.map((c) =>
@@ -541,9 +543,15 @@ export function isFirstChild(node, limiter) {
 	return true;
 }
 
-export function isLastTableCell(node, limiter) {
+export function isLastTableCell(node, limiter, otherCells) {
 	const cell = node.tagName === "TD" ? node : parentOf(node, "TD", limiter);
-	return cell && !cell.nextSibling;
+	if (!cell || cell.nextSibling) return false;
+
+	const cellData = getCellData(cell);
+	const otherCellsDataSameTable = otherCells.filter(c => c !== cell).map(c => getCellData(c)).filter(d => d.tableLayer === cellData.tableLayer && d.tableCount === cellData.tableCount);
+	const sortedData = sortCellsData([cellData, ...otherCellsDataSameTable]);
+
+	return sortedData.length - 1 === sortedData.findIndex(d => d.ref === cellData.ref);
 }
 
 export function isContainer(node) {
@@ -880,16 +888,17 @@ export function getAllNextTableCells(node, limiter, nodesToInclude = []) {
 
 		while (nodeIdx) {
 			const subCellsIncluded = nodesToInclude.filter((n) => {
-				const includeCell =
-					n.tagName === "TD" ? n : parentOf(n, "TD", limiter);
+				const includeCell = n.tagName === "TD" ? n : parentOf(n, "TD", limiter);
 				return includeCell !== nodeIdx && nodeIdx.contains(includeCell);
 			});
-			if (
-				subCellsIncluded.length > 0
-			) {
-				const subCellsRows = [...new Set(subCellsIncluded.map(c => parentOf(c, "TR", limiter)))];
+			if (subCellsIncluded.length > 0) {
+				const subCellsRows = [
+					...new Set(subCellsIncluded.map((c) => parentOf(c, "TR", limiter))),
+				];
 				for (const subRow of subCellsRows) {
-					const subRowCell = subCellsIncluded.find(c => parentOf(c, "TR", limiter) === subRow); 
+					const subRowCell = subCellsIncluded.find(
+						(c) => parentOf(c, "TR", limiter) === subRow
+					);
 					const subCells = getAllNextTableCells(subRowCell, nodeIdx);
 					cellsFound.push(subRowCell);
 					cellsFound.push(...subCells);
@@ -903,8 +912,13 @@ export function getAllNextTableCells(node, limiter, nodesToInclude = []) {
 
 	const table = parentOf(cell, "TABLE", limiter);
 	return [
-		...cellsFound,
-		...(table ? getAllNextTableCells(table, limiter, nodesToInclude) : []).filter(node => node !== cell),
+		...new Set([
+			...cellsFound,
+			...(table
+				? getAllNextTableCells(table, limiter, nodesToInclude)
+				: []
+			).filter((node) => node !== cell),
+		]),
 	];
 }
 
