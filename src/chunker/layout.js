@@ -35,8 +35,7 @@ import {
 	getNodeTableRow,
 	getParentsCells,
 	isTableCellEmpty,
-	keepRelevantCells,
-	sortCellsData,
+	// keepRelevantCells,
 	sortCellsNodeData,
 	TABLE_BREAK_END_CLASS,
 } from "../modules/paged-media/tables.js";
@@ -1208,13 +1207,9 @@ class Layout {
 				otherBrokenCells
 			);
 			// keepRelevantCells(otherCellsInTable, brokenCells);
-			
+
 			const brokenRows = [
-				...new Set(
-					brokenCells.flatMap((cell) =>
-						getNodeTableRow(cell, true)
-					)
-				),
+				...new Set(brokenCells.flatMap((cell) => getNodeTableRow(cell, true))),
 			].filter((range) => !!range);
 			const prevBrokenRows = [
 				...new Set(
@@ -1281,9 +1276,13 @@ class Layout {
 			}
 
 			// sort cells
-			const cellsSorted = rangeArray.map((range, index) => ({idx: index, node: range.startContainer.tagName === "TD"
-				? range.startContainer
-				: parentOf(range.startContainer, "TD", rendered)}));
+			const cellsSorted = rangeArray.map((range, index) => ({
+				idx: index,
+				node:
+					range.startContainer.tagName === "TD"
+						? range.startContainer
+						: parentOf(range.startContainer, "TD", rendered),
+			}));
 			sortCellsNodeData(cellsSorted);
 			const tmpArray = [];
 			for (const cell of cellsSorted) {
@@ -1291,8 +1290,8 @@ class Layout {
 			}
 			rangeArray.length = 0;
 			rangeArray.push(...tmpArray);
-			
-			const allCells = cellsSorted.map(c => c.node);
+
+			const allCells = cellsSorted.map((c) => c.node);
 			rangeArray.forEach((range, index) => {
 				const parentCell =
 					range.startContainer.tagName === "TD"
@@ -1311,16 +1310,13 @@ class Layout {
 				}
 
 				range.setEndAfter(parentCell.lastChild);
-				if (isLastTableCell(parentCell, rendered, allCells)) {
-					let cellIdx = parentCell;
-
-					while (cellIdx && isLastTableCell(cellIdx, rendered, allCells)) {
-						let parentCellIdx = parentOf(cellIdx, "TD", rendered);
-						if (parentCellIdx) {
-							range.setEndAfter(parentCellIdx.lastChild);
-						}
-						cellIdx = parentCellIdx;
-					}
+				let cellIdx = parentCell;
+				let parentCellIdx;
+				while (cellIdx && isLastTableCell(cellIdx, rendered, allCells) &&
+							(parentCellIdx = parentOf(cellIdx, "TD", rendered))) {
+					const table = parentOf(cellIdx, "TABLE", rendered);
+					range.setEndAfter(table.lastChild);
+					cellIdx = parentCellIdx;
 				}
 			});
 

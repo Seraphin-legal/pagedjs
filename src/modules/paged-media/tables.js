@@ -12,9 +12,17 @@ class Tables extends Handler {
 	afterParsed(parsed) {
 		const tables = parsed.querySelectorAll("table");
 		let count = 0;
+
 		tables.forEach((table) => {
 			this.setTableCellsSizeData(table);
-			if (this.tagTable(table, count)) {
+
+			let nodeIdx = table.parentNode;
+			while (nodeIdx && nodeIdx.tagName !== "TABLE") {
+				nodeIdx = nodeIdx.parentNode;
+			}
+			if (!nodeIdx) {
+				// only tag tables that are not nested
+				this.tagTable(table, count);
 				count += 1;
 			}
 		});
@@ -29,18 +37,18 @@ class Tables extends Handler {
 			toRemove.remove();
 		}
 
-		const addedCells = [
-			...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`),
-		];
-		// check and remove duplicated cell
-		for (const cell of addedCells) {
-			const existingCell = page.area.querySelector(
-				`td[data-ref="${cell.dataset.ref}"]:not(.${ADDED_CELL_CLASS})`
-			);
-			if (existingCell) {
-				cell.remove();
-			}
-		}
+		// const addedCells = [
+		// 	...page.area.querySelectorAll(`td.${ADDED_CELL_CLASS}`),
+		// ];
+		// // check and remove duplicated cell
+		// for (const cell of addedCells) {
+		// 	const existingCell = page.area.querySelector(
+		// 		`td[data-ref="${cell.dataset.ref}"]:not(.${ADDED_CELL_CLASS})`
+		// 	);
+		// 	if (existingCell) {
+		// 		cell.remove();
+		// 	}
+		// }
 		const mainContainer = page.area.querySelector("main");
 		if (mainContainer) {
 			const tables = mainContainer.querySelectorAll("table");
@@ -67,7 +75,7 @@ class Tables extends Handler {
 						...previousPageLastElementTable.querySelectorAll(
 							"tbody tr:last-child"
 						),
-					];
+					].reverse();
 
 					for (const lastPreviousPageRow of allLastPreviousPageRow) {
 						const currentRow = mainContainer.querySelector(
@@ -79,7 +87,7 @@ class Tables extends Handler {
 							const previousTBody = lastPreviousPageRow.parentNode;
 							lastPreviousPageRow.remove();
 							if (previousTBody.childNodes.length === 0) {
-								previousPageLastElementTable.remove();
+								previousTBody.parentNode.remove();
 							}
 						}
 					}
@@ -98,27 +106,29 @@ class Tables extends Handler {
 		}
 	}
 
-	tagTable(table, count, layerLevel = 0) {
+	tagTable(table, count, cellIdx = 0, layer = 0) {
 		if (typeof table.dataset.tableCount !== "undefined") {
-			return false;
+			return cellIdx;
 		}
 		table.setAttribute("data-table-count", count);
-		table.setAttribute("data-table-layer", layerLevel);
+		table.setAttribute("data-table-layer", layer);
+
 		const cells = table.querySelectorAll(
-			":scope > tbody > tr > td, :scope > tbody > tr > th"
+			":scope > tbody > tr > td, :scope > tbody > th > td"
 		);
 		for (let idx = 0; idx < cells.length; ++idx) {
 			const cell = cells[idx];
 			const subTable = cell.querySelectorAll("table");
 
 			for (let subIdx = 0; subIdx < subTable.length; ++subIdx) {
-				this.tagTable(subTable[subIdx], subIdx, layerLevel + 1);
+				cellIdx = this.tagTable(subTable[subIdx], count, cellIdx, layer + 1);
 			}
-			cell.setAttribute("data-table-idx", idx);
 			cell.setAttribute("data-table-count", count);
-			cell.setAttribute("data-table-layer", layerLevel);
+			cell.setAttribute("data-table-layer", layer);
+			cell.setAttribute("data-table-cell-idx", cellIdx);
+			cellIdx += 1;
 		}
-		return true;
+		return cellIdx;
 	}
 
 	isTableRowEmpty(row) {
@@ -310,34 +320,28 @@ export function getParentsCells(node, limiter) {
 
 export function sortCellsNodeData(cellsData) {
 	return cellsData.sort(({ node: a }, { node: b }) => {
-		if (parseInt(a.dataset.tableLayer) !== parseInt(b.dataset.tableLayer)) {
-			return parseInt(b.dataset.tableLayer) - parseInt(a.dataset.tableLayer); // Sort by greater layer
-		} else if (parseInt(a.dataset.tableCount) !== parseInt(b.dataset.tableCount)) {
-			return parseInt(a.dataset.tableCount) - parseInt(b.dataset.tableCount); // Sort by shorter count
-		} else {
-			return parseInt(a.dataset.tableIdx) - parseInt(b.dataset.tableIdx); // Sort by shorter idx
+		if (parseInt(a.dataset.tableCount) !== parseInt(b.dataset.tableCount)) {
+			return parseInt(a.dataset.tableCount) - parseInt(b.dataset.tableCount); // Sort by count ascending
 		}
+		return parseInt(a.dataset.tableCellIdx) - parseInt(b.dataset.tableCellIdx); // Sort by idx ascending
 	});
 }
 
 export function sortCellsData(data) {
 	return data.sort((a, b) => {
-		if (parseInt(a.tableLayer) !== parseInt(b.tableLayer)) {
-			return parseInt(b.tableLayer) - parseInt(a.tableLayer); // Sort by greater layer
-		} else if (parseInt(a.tableCount) !== parseInt(b.tableCount)) {
-			return parseInt(a.tableCount) - parseInt(b.tableCount); // Sort by shorter count
-		} else {
-			return parseInt(a.tableIdx) - parseInt(b.tableIdx); // Sort by shorter idx
+		if (a.tableCount !== b.tableCount) {
+			return a.tableCount - b.tableCount; // Sort by count ascending
 		}
+		return a.tableCellIdx - b.tableCellIdx; // Sort by idx ascending
 	});
 }
 
 export function getCellData(cell) {
 	return {
 		ref: cell.dataset.ref,
-		tableLayer: parseInt(cell.dataset.tableLayer),
 		tableCount: parseInt(cell.dataset.tableCount),
-		tableIdx: parseInt(cell.dataset.tableIdx), 
+		tableLayer: parseInt(cell.dataset.tableLayer),
+		tableCellIdx: parseInt(cell.dataset.tableCellIdx),
 		yStart: parseInt(cell.dataset.yStart),
 		yEnd: parseInt(cell.dataset.yEnd),
 		xStart: parseInt(cell.dataset.xStart),
@@ -347,9 +351,9 @@ export function getCellData(cell) {
 
 function findCommonDataValue(array) {
 	// Find the maximum yStart and minimum yEnd
-	let maxYStart = Math.max(...array.map(obj => obj.yStart));
-	let minYEnd = Math.min(...array.map(obj => obj.yEnd));
-	
+	let maxYStart = Math.max(...array.map((obj) => obj.yStart));
+	let minYEnd = Math.min(...array.map((obj) => obj.yEnd));
+
 	// Check if the maximum yStart is less than or equal to the minimum yEnd
 	if (maxYStart <= minYEnd) {
 		return maxYStart; // Common value exists, return maxYStart
@@ -360,30 +364,46 @@ function findCommonDataValue(array) {
 
 // keep the cells
 export function keepRelevantCells(cellsToCheck, brokenCells) {
-	const brokenCellsData = brokenCells.map(c => getCellData(c));
-	const otherCellsData = cellsToCheck.filter(c => !brokenCells.includes(c)).map(c => getCellData(c));
+	const brokenCellsData = brokenCells.map((c) => getCellData(c));
+	const otherCellsData = cellsToCheck
+		.filter((c) => !brokenCells.includes(c))
+		.map((c) => getCellData(c));
 	const allData = [...brokenCellsData, ...otherCellsData];
 	const cellsToRemove = [];
 
-	const tableLayers = [... new Set(allData.map(c => c.tableLayer))];
+	const tableLayers = [...new Set(allData.map((c) => c.tableLayer))];
 	for (const layerLevel of tableLayers) {
-		const tableCounts = [... new Set(allData.filter(c => c.tableLayer === layerLevel).map(c => c.tableCount))];
+		const tableCounts = [
+			...new Set(
+				allData
+					.filter((c) => c.tableLayer === layerLevel)
+					.map((c) => c.tableCount)
+			),
+		];
 
 		for (const tableCount of tableCounts) {
-			const tableBrokenData = brokenCellsData.filter(c => c.tableLayer === layerLevel && c.tableCount === tableCount);
-			const tableOtherData = otherCellsData.filter(c => c.tableLayer === layerLevel && c.tableCount === tableCount);
+			const tableBrokenData = brokenCellsData.filter(
+				(c) => c.tableLayer === layerLevel && c.tableCount === tableCount
+			);
+			const tableOtherData = otherCellsData.filter(
+				(c) => c.tableLayer === layerLevel && c.tableCount === tableCount
+			);
 
-			const lastEarlyY = Math.max(...tableBrokenData.map(d => d.yStart));
-			const brokenRowsBetweenY = tableBrokenData.filter(d => d.yStart <= lastEarlyY && lastEarlyY <= d.yEnd);
+			const lastEarlyY = Math.max(...tableBrokenData.map((d) => d.yStart));
+			const brokenRowsBetweenY = tableBrokenData.filter(
+				(d) => d.yStart <= lastEarlyY && lastEarlyY <= d.yEnd
+			);
 			const commonY = findCommonDataValue(brokenRowsBetweenY);
-			const otherDataAfterY = tableOtherData.filter(d => d.yEnd > commonY);
+			const otherDataAfterY = tableOtherData.filter((d) => d.yEnd > commonY);
 
 			cellsToRemove.push(...otherDataAfterY);
 		}
 	}
 
 	for (const cellToRemove of cellsToRemove) {
-		const idx = cellsToCheck.findIndex((cell) => cell.dataset.ref === cellToRemove);
+		const idx = cellsToCheck.findIndex(
+			(cell) => cell.dataset.ref === cellToRemove
+		);
 		if (idx !== -1) {
 			cellsToCheck.splice(idx, 1);
 		}
